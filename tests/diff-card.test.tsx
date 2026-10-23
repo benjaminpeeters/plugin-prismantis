@@ -1,9 +1,10 @@
 import type { On } from 'claude-code'
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { DIFF_PALETTES, DIFFS_TEXT } from '../hooks/diff-palettes'
 import { diffTint } from '../hooks/render'
 import { PRESETS } from '../hooks/presets'
+import { claudeAt } from './claude-version'
 
 const t = PRESETS['catppuccin-mocha']
 
@@ -50,17 +51,80 @@ test('diffTint sets how much of the diff color tints a changed line', () => {
 })
 
 for (const diffFold of ['open', 'folded'] as const) {
-  test(`diffFold ${diffFold} toggles the card between its head and its lines`, { options: { diffFold } }, async ($, on) => {
+  test(`diffFold ${diffFold}: a click anywhere on the card toggles it between its head and its lines, no button drawn`, { options: { diffFold } }, async ($, on) => {
     engine(on)
     const ui = await $.ui.mount(edit)
     const lines = async () => !!(await ui.find({ type: 'Text', text: /const c = 4/ }))
     expect(await lines()).toBe(diffFold === 'open')
-    expect((await ui.find({ type: 'Button', props: { label: diffFold === 'open' ? 'hide' : 'show' } }))).toBeTruthy()
-    await ui.press({ key: 'cardfold' })
+    const whole = await ui.find({ type: 'Button', props: { label: diffFold === 'open' ? 'hide' : 'show' } })
+    expect(whole?.props.plain).toBe(true)
+    expect(whole?.text).toMatch(/\+2 −1/)
+    await ui.press({ key: 'cardfold.rows' })
     expect(await lines()).toBe(diffFold !== 'open')
     await ui.unmount()
   })
 }
+
+const write = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolResult' as const, props: { tool_use_id: 'w-1', tool: 'Write', output: { type: 'create', filePath: '/home/demo/app/notes.md', content: 'first line\nsecond line\n', structuredPatch: [], originalFile: null }, isErrored: false }, viewport: { columns: 100, rows: 40 } }
+
+const inApp = (on: On) => {
+  mock.env(on, { HOME: '/home/demo' })
+  on('session.root', () => ({ value: '/home/demo/app' }))
+  claudeAt(on, '2.1.295')
+}
+
+test('createdStyle card draws a created file as a folded card on its own background, opened by a click', { options: { createdStyle: 'card', diffFold: 'folded', diffBorder: false, diffBackgroundColor: '#1c1c1c', createdBackgroundColor: '#1f231f' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount(write)
+  expect((await ui.findAll({ type: 'Box' })).some(box => box.props.backgroundColor === '#1f231f')).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /Created .*notes\.md \(2 lines\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /second line/ })).toBeUndefined()
+  await ui.press({ key: 'cardfold.rows' })
+  expect(await ui.find({ type: 'Text', text: /second line/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+const editRow = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolUse' as const, props: { tool_use_id: 'd-1', tool: 'Edit', input: { file_path: '/home/demo/app/src/app.ts' }, output: patch, isRunning: false, isErrored: false, isInterrupted: false }, viewport: { columns: 100, rows: 40 } }
+
+test('editRow file highlights the file name and shows the change counts on the row', { options: { editRow: 'file' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount(editRow)
+  const name = await ui.find({ type: 'Text', text: /^app\.ts$/ })
+  expect(name?.props.bold).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /^src\/$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^\+2$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^−1$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('diffToggle row: the Edit row toggles its card, which draws nothing while folded and only its lines when open', { options: { diffToggle: 'row', diffFold: 'folded' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const row = await $.ui.mount(editRow)
+  const card = async () => {
+    const ui = await $.ui.mount(edit)
+    const shown = { lines: !!(await ui.find({ type: 'Text', text: /const c = 4/ })), head: !!(await ui.find({ type: 'Text', text: /^\+2 −1$/ })) }
+    await ui.unmount()
+    return shown
+  }
+  expect(await card()).toEqual({ lines: false, head: false })
+  const toggle = await row.find({ type: 'Button', props: { label: 'show diff' } })
+  expect(toggle?.text).toMatch(/Edited/)
+  await row.press({ key: 'rowfold.rows' })
+  expect(await card()).toEqual({ lines: true, head: false })
+  await row.unmount()
+})
+
+test('createdStyle preview, the default, keeps the created file as it was', async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount(write)
+  expect(await ui.find({ type: 'Text', text: /second line/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Button', props: { label: 'show' } })).toBeUndefined()
+  await ui.unmount()
+})
 
 test('/prismantis diffs draws every palette as a full-width card with its options named', async ($, on) => {
   engine(on)

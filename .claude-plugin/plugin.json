@@ -352,7 +352,7 @@
     "diffFold": {
       "type": "string",
       "title": "Diff folding",
-      "description": "none: a diff card always shows its lines. open (fork): a hide button on the card's head folds it to the head line; it starts open. folded (fork): it starts as the head line, with a show button.",
+      "description": "none: a diff card always shows its lines. open (fork): a click anywhere on the card folds it to its head line, and another opens it; it starts open. folded (fork): it starts as the head line, a click opens it. Applies to created files too with createdStyle card.",
       "default": "none",
       "options": ["none", "open", "folded"]
     },
@@ -366,6 +366,33 @@
       "type": "string",
       "title": "Diff word tint",
       "description": "How strongly the changed words stand out from their line (fork): the percent of the diff color laid over the line's tint, 0 to 90. Empty keeps 30.",
+      "default": ""
+    },
+    "diffToggle": {
+      "type": "string",
+      "title": "Diff toggle",
+      "description": "card: a click on a diff card folds or opens it. row (fork): a click on the Edit or Write row ('Edited path ●') does it instead; a folded card is then not drawn at all and an open one shows only its lines, the row being its head. Needs diffFold open or folded; cards of shell edits keep their own toggle.",
+      "default": "card",
+      "options": ["card", "row"]
+    },
+    "editRow": {
+      "type": "string",
+      "title": "Edit row",
+      "description": "path: an Edit or Write row shows the file's path as it is. file (fork): the folder dim, the file name highlighted, then the change's +N −M (a created file counts its lines).",
+      "default": "path",
+      "options": ["path", "file"]
+    },
+    "createdStyle": {
+      "type": "string",
+      "title": "Created file style",
+      "description": "preview: a created file shows its first lines under 'Created path (N lines)', the rest behind a button. card (fork): it draws as an edit's diff card does, same width, border and fold (diffFold, a click anywhere toggles it), on createdBackgroundColor, else diffBackgroundColor.",
+      "default": "preview",
+      "options": ["preview", "card"]
+    },
+    "createdBackgroundColor": {
+      "type": "string",
+      "title": "Created file card background",
+      "description": "Background of a created file's card (createdStyle card, fork). Hex, rgb(), ansi256() or a name. Empty uses diffBackgroundColor.",
       "default": ""
     },
     "diffBorder": {

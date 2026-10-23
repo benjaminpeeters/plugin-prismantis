@@ -15,7 +15,7 @@ import { drawDraft, isDraftLang } from './draft'
 import { drawHandoff, handoffLast, isHandoffLang } from './handoff'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
-import { MARK, bashEdits, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import { MARK, bashEdits, fileStats, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -331,7 +331,7 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
   const folded = !open.includes(id)
   const label = folded ? look?.label ?? `+${hidden} more lines` : look?.close ?? 'show less'
   const toggle = () => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))
-  if (!faces) return { folded, faced: false, element: <el.Button key={key} variant="secondary" label={label} onPress={toggle} /> }
+  if (!faces && !look?.whole) return { folded, faced: false, element: <el.Button key={key} variant="secondary" label={label} onPress={toggle} /> }
   const element = look?.face ? <el.Button key={key} plain label={label} onPress={toggle}>{look.face(folded)}</el.Button> : <el.Button key={key} variant="secondary" label={label} onPress={toggle} />
   return { folded, faced: look?.face !== undefined, element, around: (rows, hover) => <el.Button key={`${key}.rows`} plain label={label} hover={hover} onPress={toggle}>{rows}</el.Button> }
 }
@@ -653,7 +653,17 @@ export const register: Register = (on, options) => {
       await locate($, style)
       noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
       if (quiet && isReadOnlyCall(e.props.tool, e.props.input)) rememberCall(readOnlyCalls, e.props.tool_use_id)
-      if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), e.props, e.viewport?.columns)
+      if (!expandedCalls.has(e.props.tool_use_id)) {
+        const el = $.ui.resolve(e)
+        const file = (e.props.tool === 'Edit' || e.props.tool === 'Write') && !e.props.isErrored
+        const stats = file && style.editRow === 'file' ? fileStats(e.props.output) : undefined
+        // diffToggle row: a click on an Edit or Write row opens or folds its card, which shares the fold id `card:<tool id>`.
+        const toggle = file && style.diffToggle === 'row' && style.diffFold !== 'none'
+          ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', style.diffFold === 'open' ? { label: 'hide diff', close: 'show diff', whole: true } : { label: 'show diff', close: 'hide diff', whole: true })
+          : null
+        const around = toggle?.around ? (text: RenderElement) => <el.Box key="rowtoggle">{toggle.around!(text, { inverse: false })}</el.Box> : undefined
+        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, around)
+      }
       const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
       return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns) : next(e)
     })

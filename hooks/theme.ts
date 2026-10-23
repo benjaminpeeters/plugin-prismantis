@@ -9,7 +9,7 @@ import { TERMINALS } from './rtl'
 export const TOKENS = [
   'accent', 'heading', 'strong', 'emphasis', 'inlineCode', 'codeText', 'codeCommand', 'codeFlag', 'codeString', 'codeComment',
   'link', 'path', 'number', 'quote', 'rule', 'tableHeader', 'tableRule', 'bullet', 'diagram', 'diagramText', 'diffAdded', 'diffRemoved',
-  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground',
+  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground', 'createdBackground',
 ] as const
 
 export type Theme = Partial<Record<(typeof TOKENS)[number], string>>
@@ -36,6 +36,9 @@ export type Style = {
   diffTint?: number
   diffWordTint?: number
   diffPath: boolean
+  createdStyle: 'preview' | 'card'
+  diffToggle: 'card' | 'row'
+  editRow: 'path' | 'file'
   diffBorder: boolean
   pieStyle: 'round' | 'bars'
   highlightNumbers: boolean
@@ -114,6 +117,9 @@ export const resolveStyle = (options: PluginOptions): Style => {
     ...(tintShare(options.diffWordTint, 90) === undefined ? {} : { diffWordTint: tintShare(options.diffWordTint, 90) }),
     diffPath: options.diffPath === true,
     diffBorder: options.diffBorder !== false,
+    createdStyle: pick(options.createdStyle, ['preview', 'card'] as const, 'preview'),
+    diffToggle: pick(options.diffToggle, ['card', 'row'] as const, 'card'),
+    editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,
     highlightPaths: options.highlightPaths !== false,
