@@ -403,6 +403,12 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `latex` | `true`, `false` | `false` |
 | `<token>Color` | any color, see below | theme |
 | `diffStyle` | `card` (rounded box, tinted lines), `full` (no box, lines tinted across the width), `marks` (no tint, colored `+` and `−` marks), `bar` (no tint, a colored `▌` before each changed line) | `card` |
+| `diffWidth` | `fit` (a card as wide as its lines), `full` (fork: every card spans the window) | `fit` |
+| `diffFold` | `none`, `open` (fork: a hide button on the head, starts open), `folded` (fork: starts as the head line, with a show button) | `none` |
+| `diffTint` | percent of the diff color in a changed line's background, 0 to 60; 0 tints only the changed words (fork) | 30 dark, 20 light |
+| `diffWordTint` | percent of the diff color laid over a changed word's line tint, 0 to 90 (fork) | 30 |
+| `diffBorder` | `true`, `false`: the card's border; with `diffBackgroundColor` gives border, fill, both or neither (fork) | `true` |
+| `diffPath` | `true`, `false`: the edited file's path before `+N −M` on an edit's card (fork) | `false` |
 A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name (`green`, `cyanBright`). Values that don't parse are ignored. Every token has a `<token>Color` option and a row in `/config`:
 
 | Token | Colors |
@@ -429,6 +435,7 @@ A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name
 | `diagramText` | diagram labels, LaTeX formulas and figure text |
 | `diffAdded` | added diff lines: their tint, `+` marks and count (the theme's own green) |
 | `diffRemoved` | removed diff lines: their tint, `−` marks and count (the theme's own red) |
+| `diffBackground` | a diff card's background, the added and removed tints mixed into it (fork; unset: the terminal's) |
 | `turnDuration` | the whole `✻ Worked for 8s · 14:32` line (unset: words in `codeComment`, duration and time in `number`) |
 | `replyBullet` | the `●` before each reply (unset: `accent`) |
 | `heading1` … `heading6` | one heading level each (unset: `heading` for H1 and H2, `accent` for H3+) |

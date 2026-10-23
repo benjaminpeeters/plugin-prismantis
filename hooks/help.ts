@@ -299,6 +299,7 @@ export const helpText = (themes: readonly string[]): string => `
 | \`/prismantis setup\` | Pick a theme and how tables, tasks, headings, copy buttons, prompts, times, tool rows, tool output, diffs and pie charts look, from drawn samples |
 | \`/prismantis demo\` | Full showcase, every element and diagram, plus a section in your language (Korean so far, or \`demo ko\`) |
 | \`/prismantis demo-rtl\` | Hebrew right-to-left showcase |
+| \`/prismantis diffs\` | Ten diff card looks one under the other, each with the options that give it |
 
 ### ${themes.length} themes
 

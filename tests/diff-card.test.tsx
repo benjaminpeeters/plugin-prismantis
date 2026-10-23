@@ -1,0 +1,106 @@
+import type { On } from 'claude-code'
+import { expect, test } from 'claude-code/testing'
+
+import { DIFF_PALETTES, DIFFS_TEXT } from '../hooks/diff-palettes'
+import { diffTint } from '../hooks/render'
+import { PRESETS } from '../hooks/presets'
+
+const t = PRESETS['catppuccin-mocha']
+
+const patch = { filePath: '/tmp/app.ts', structuredPatch: [{ oldStart: 4, newStart: 4, lines: [' const a = 1', '-const b = 2', '+const b = 3', '+const c = 4'] }] }
+
+const edit = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolResult' as const, props: { tool_use_id: 'd-1', tool: 'Edit', output: patch, isErrored: false }, viewport: { columns: 100, rows: 40 } }
+
+const engine = (on: On) => on('ui.render', ($, e) => {
+  const { Text } = $.ui.resolve(e)
+  return <Text>engine</Text>
+})
+
+const card = async (ui: { findAll: (q: { type: 'Box' }) => Promise<{ props: Record<string, unknown> }[]> }) =>
+  (await ui.findAll({ type: 'Box' })).find(box => box.props.borderStyle === 'round')
+
+test('diffWidth full lets a diff card grow to the window instead of fitting its lines', { options: { diffWidth: 'full' } }, async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  const column = (await ui.findAll({ type: 'Box' })).find(box => box.props.flexGrow === 1 && box.props.flexDirection === 'column')
+  expect(column).toBeTruthy()
+  await ui.unmount()
+})
+
+test('diffPath puts the file name before the counts', { options: { diffPath: true } }, async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  expect(await ui.find({ type: 'Text', text: /app\.ts.*\+2 −1/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('diffBackgroundColor fills the card and the tints mix into it', { options: { diffBackgroundColor: '#202030' } }, async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  expect((await card(ui))?.props.backgroundColor).toBe('#202030')
+  expect(diffTint(t.codeText, t.diffAdded, undefined, '#202030')).not.toBe(diffTint(t.codeText, t.diffAdded))
+  await ui.unmount()
+})
+
+test('diffTint sets how much of the diff color tints a changed line', () => {
+  const soft = diffTint(t.codeText, t.diffAdded, 0.1)!
+  const strong = diffTint(t.codeText, t.diffAdded)!
+  const sum = (hex: string) => [1, 3, 5].reduce((s, i) => s + parseInt(hex.slice(i, i + 2), 16), 0)
+  expect(sum(soft)).toBeLessThan(sum(strong))
+})
+
+for (const diffFold of ['open', 'folded'] as const) {
+  test(`diffFold ${diffFold} toggles the card between its head and its lines`, { options: { diffFold } }, async ($, on) => {
+    engine(on)
+    const ui = await $.ui.mount(edit)
+    const lines = async () => !!(await ui.find({ type: 'Text', text: /const c = 4/ }))
+    expect(await lines()).toBe(diffFold === 'open')
+    expect((await ui.find({ type: 'Button', props: { label: diffFold === 'open' ? 'hide' : 'show' } }))).toBeTruthy()
+    await ui.press({ key: 'cardfold' })
+    expect(await lines()).toBe(diffFold !== 'open')
+    await ui.unmount()
+  })
+}
+
+test('/prismantis diffs draws every palette as a full-width card with its options named', async ($, on) => {
+  engine(on)
+  const run = await $.command.run({ command: 'prismantis', args: 'diffs', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
+  expect(run.text).toBe(DIFFS_TEXT)
+  const ui = await $.ui.mount({ plugin: 'prismantis', surface: 'terminal', component: 'CommandOutput', props: { command: 'prismantis', args: 'diffs', text: DIFFS_TEXT, isErrored: false }, viewport: { columns: 120, rows: 200 } })
+  const boxes = await ui.findAll({ type: 'Box' })
+  expect(boxes.filter(box => box.props.borderStyle === 'round')).toHaveLength(DIFF_PALETTES.filter(p => p.border !== false).length)
+  expect(boxes.filter(box => box.props.backgroundColor === '#1c1c1c')).toHaveLength(DIFF_PALETTES.filter(p => p.diffBackground === '#1c1c1c').length)
+  for (const [i, p] of DIFF_PALETTES.entries()) expect(await ui.find({ type: 'Text', text: `${i + 1}. ${p.name}` })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /"diffTint": "0", "diffWordTint": "35", "diffBorder": true/ })).toBeTruthy()
+  await ui.unmount()
+  const prefixed = await $.ui.mount({ plugin: 'prismantis', surface: 'terminal', component: 'CommandOutput', props: { command: 'prismantis', args: 'diffs', text: `prismantis: ${DIFFS_TEXT}\n`, isErrored: false }, viewport: { columns: 120, rows: 200 } })
+  expect(await prefixed.find({ type: 'Text', text: `1. ${DIFF_PALETTES[0]!.name}` })).toBeTruthy()
+  await prefixed.unmount()
+})
+
+test('diffBorder false drops the border; with a background the card keeps its padding', { options: { diffBorder: false, diffBackgroundColor: '#1c1c1c' } }, async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  const boxes = await ui.findAll({ type: 'Box' })
+  expect(boxes.filter(box => box.props.borderStyle === 'round')).toHaveLength(0)
+  expect(boxes.find(box => box.props.backgroundColor === '#1c1c1c')?.props.paddingX).toBe(1)
+  await ui.unmount()
+})
+
+test('diffTint 0 leaves changed lines on the card ground while changed words keep a tint', { options: { diffTint: '0', diffWordTint: '40' } }, async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  const tintedRows = (await ui.findAll({ type: 'Box' })).filter(box => box.props.flexDirection === 'row' && box.props.backgroundColor !== undefined)
+  expect(tintedRows).toHaveLength(0)
+  const words = (await ui.findAll({ type: 'Text' })).filter(node => node.props.backgroundColor !== undefined)
+  expect(words.length).toBeGreaterThan(0)
+  await ui.unmount()
+})
+
+test('diffFold none, the default, draws no fold button and every line', async ($, on) => {
+  engine(on)
+  const ui = await $.ui.mount(edit)
+  expect(await ui.find({ type: 'Button', props: { label: 'hide' } })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /const c = 4/ })).toBeTruthy()
+  await ui.unmount()
+})

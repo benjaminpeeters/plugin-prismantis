@@ -1129,7 +1129,7 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
 
 export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
 export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
-export type FoldLook = { label?: string; face?: (folded: boolean) => RenderElement }
+export type FoldLook = { label?: string; close?: string; face?: (folded: boolean) => RenderElement }
 export type Fold = (id: string, hidden: number, key: string, look?: FoldLook) => { folded: boolean; element: RenderElement; faced: boolean; around?: (rows: RenderElement, hover: TextHoverProps) => RenderElement } | null
 export type Tip = (note: number) => (() => void) | undefined
 
@@ -1496,12 +1496,14 @@ export const fullHue = (hex: string): string => {
   return `#${pure.map(v => Math.round(v! * 255).toString(16).padStart(2, '0')).join('')}`
 }
 
-export const diffTint = (text: string | undefined, color: string | undefined): string | undefined => {
+// `strength` and `ground` come from the diffTint option and the diffBackground token: how much of
+// the hue, mixed into what; unset, 30% (dark) or 20% (light) into black or white.
+export const diffTint = (text: string | undefined, color: string | undefined, strength?: number, ground?: string): string | undefined => {
   if (!text || !color || !HEX.test(text) || !HEX.test(color)) return undefined
   const dark = contrast(text, '#000000') >= contrast(text, '#ffffff')
-  const base = dark ? '#000000' : '#ffffff'
+  const base = ground && HEX.test(ground) ? ground : dark ? '#000000' : '#ffffff'
   const hue = fullHue(color)
-  let share = dark ? 0.3 : 0.2
+  let share = strength ?? (dark ? 0.3 : 0.2)
   while (share > 0.05 && contrast(text, tint(base, hue, share)!) < TEXT_CONTRAST) share -= 0.01
   return tint(base, hue, share)
 }
@@ -1596,9 +1598,10 @@ const diffSegments = (style: Style, rows: DiffLine[], path: string | undefined):
 
 const WORD_SHARE = 0.3
 
-export const wordTint = (text: string | undefined, color: string | undefined): string | undefined => {
-  const row = diffTint(text, color)
-  return row && tint(row, color, WORD_SHARE)
+// `word` (the diffWordTint option) is how much of the diff color goes on top of the line's tint.
+export const wordTint = (text: string | undefined, color: string | undefined, strength?: number, ground?: string, word = WORD_SHARE): string | undefined => {
+  const row = diffTint(text, color, strength, ground)
+  return row && tint(row, color, word)
 }
 
 const WORD = /\w+|\s+|[^\w\s]/g
@@ -1791,7 +1794,7 @@ const plainParts = (text: string): Piece[][] => [text ? [{ text, italic: false, 
 
 type MarkColors = Record<DiffLine['mark'], string | undefined>
 
-type DiffPaint = { look: Style['diffStyle']; gutter: number; marks: MarkColors; tints: MarkColors; words: MarkColors }
+type DiffPaint = { look: Style['diffStyle']; frame: number; gutter: number; marks: MarkColors; tints: MarkColors; words: MarkColors }
 
 const UNTINTED: MarkColors = { '+': undefined, '-': undefined, ' ': undefined, '\\': undefined }
 
@@ -1801,18 +1804,22 @@ const diffPaint = (style: Style, gutter: number): DiffPaint => {
   const t = style.theme
   const marks = markColors(t)
   const tinted = style.diffStyle === 'card' || style.diffStyle === 'full'
-  const lines = { ...UNTINTED, '+': diffTint(t.codeText, marks['+']), '-': diffTint(t.codeText, marks['-']) }
+  const ground = style.diffStyle === 'card' ? t.diffBackground : undefined
+  const lines = { ...UNTINTED, '+': diffTint(t.codeText, marks['+'], style.diffTint, ground), '-': diffTint(t.codeText, marks['-'], style.diffTint, ground) }
+  const words = { ...UNTINTED, '+': wordTint(t.codeText, marks['+'], style.diffTint, ground, style.diffWordTint), '-': wordTint(t.codeText, marks['-'], style.diffTint, ground, style.diffWordTint) }
   return {
     look: style.diffStyle,
+    frame: style.diffStyle !== 'card' ? 0 : style.diffBorder ? 4 : t.diffBackground ? 2 : 0,
     gutter,
     marks,
-    tints: tinted ? lines : UNTINTED,
-    words: tinted ? { ...UNTINTED, '+': wordTint(t.codeText, marks['+']), '-': wordTint(t.codeText, marks['-']) } : lines,
+    // diffTint 0 leaves a changed line on the card's own ground; its changed words still get their tint.
+    tints: tinted && style.diffTint !== 0 ? lines : UNTINTED,
+    words: tinted ? words : lines,
   }
 }
 
 const codeRoom = (paint: DiffPaint, columns: number | undefined): number | undefined =>
-  columns === undefined ? undefined : columns - 5 - (paint.look === 'card' ? 4 : 0) - (paint.look === 'bar' ? 2 : 0) - paint.gutter - 3
+  columns === undefined ? undefined : columns - 5 - paint.frame - (paint.look === 'bar' ? 2 : 0) - paint.gutter - 3
 
 const barOf = (mark: DiffLine['mark']): string => (mark === ' ' || mark === '\\' ? '  ' : '▌ ')
 
@@ -1880,7 +1887,7 @@ const diffText = (el: ElementTable, style: Style, shown: DiffLine[], path: strin
   const lead = (paint.look === 'bar' ? 2 : 0) + paint.gutter + 3
   const used = (part: Piece[]) => lead + (part.length ? width(part.map(p => p.text).join('')) : 1)
   const fits = room !== undefined && room >= DIFF_ROOM
-  const span = !fits ? 0 : paint.look === 'full' ? lead + room : Math.max(0, ...kept.flatMap(l => l.parts.map(used)))
+  const span = !fits ? 0 : paint.look === 'full' || style.diffWidth === 'full' ? lead + room : Math.max(0, ...kept.flatMap(l => l.parts.map(used)))
   const rows = kept.flatMap(({ r, i, parts, gap }) => [
     ...(gap ? [[gapRow(el, paint, `t${i}.g`)]] : []),
     ...parts.map((part, k) => lineText(el, style, paint, r, `t${i}.${k}`, k, part, span - used(part))),
@@ -1898,19 +1905,30 @@ const diffBox = (el: ElementTable, style: Style, rows: DiffLine[], fold: Fold, i
   const shown = firstLines(rows, toggle?.folded === false ? DIFF_MAX : DIFF_LINES)
   const hidden = total - realLines(shown)
   const marks = markColors(t)
-  const frame = style.diffStyle === 'card' ? { borderStyle: 'round', borderColor: t.rule, paddingX: 1 } : {}
+  // A card has a border (diffBorder), a background (diffBackground), both or neither; padding only where either shows.
+  const frame = style.diffStyle !== 'card' ? {} : {
+    ...(style.diffBorder ? { borderStyle: 'round', borderColor: t.rule } : {}),
+    ...(style.diffBorder || t.diffBackground ? { paddingX: 1 } : {}),
+    ...(t.diffBackground ? { backgroundColor: t.diffBackground } : {}),
+  }
+  const named = title ?? (style.diffPath && path !== undefined ? shortPath(style, path) : undefined)
   const head = (
     <Text key="head">
-      {title === undefined ? null : <Text color={t.path}>{style.pressPreview === true && toggle?.around ? `${title} ` : drawPieces(el, style, [{ text: title, path }, { text: ' ' }])}</Text>}
+      {named === undefined ? null : <Text color={t.path}>{style.pressPreview === true && toggle?.around ? `${named} ` : drawPieces(el, style, [{ text: named, path }, { text: ' ' }])}</Text>}
       <Text color={marks['+']} dimColor={added === 0}>{`+${added}`}</Text>
       <Text> </Text>
       <Text color={marks['-']} dimColor={removed === 0}>{`−${removed}`}</Text>
     </Text>
   )
+  // diffFold: a show/hide button on the head; `open` cards start shown, `folded` ones as the head alone.
+  const card = style.diffFold === 'none' ? null : fold?.(`card:${id}`, 0, `cardfold${key}`, style.diffFold === 'open' ? { label: 'hide', close: 'show' } : { label: 'show', close: 'hide' })
+  const open = !card || (style.diffFold === 'open' ? card.folded : !card.folded)
+  const top = card ? <Box key="top" flexDirection="row" justifyContent="space-between" columnGap={2}>{head}{card.element}</Box> : head
+  if (!open) return <Box key={`card${key}`} flexDirection="column" flexShrink={1} {...frame}>{top}</Box>
   const press = style.pressPreview === true ? toggle?.around : undefined
   return (
     <Box key={`card${key}`} flexDirection="column" flexShrink={1} {...frame}>
-      {press ? press(<Text key="all">{head}{'\n'}{diffText(el, style, shown, path, columns, budget)}</Text>, { inverse: false }) : [head, ...diffBody(el, style, shown, path, columns, budget)]}
+      {press ? (card ? [top, press(<Text key="all">{diffText(el, style, shown, path, columns, budget)}</Text>, { inverse: false })] : press(<Text key="all">{head}{'\n'}{diffText(el, style, shown, path, columns, budget)}</Text>, { inverse: false })) : [top, ...diffBody(el, style, shown, path, columns, budget)]}
       {hidden > 0 && toggle?.folded !== true ? <Text dimColor>{`… +${hidden} lines`}</Text> : null}
       {toggle?.element ?? null}
     </Box>
@@ -1920,7 +1938,7 @@ const diffBox = (el: ElementTable, style: Style, rows: DiffLine[], fold: Fold, i
 const diffRow = (el: ElementTable, style: Style, cards: RenderElement[], below: boolean): RenderElement => (
   <el.Box flexDirection="row">
     <el.Text dimColor>{below ? '     ' : '  ⎿  '}</el.Text>
-    <el.Box flexDirection="column" flexShrink={1} {...(style.diffStyle === 'full' ? { flexGrow: 1 } : { alignItems: 'flex-start' as const })}>{cards}</el.Box>
+    <el.Box flexDirection="column" flexShrink={1} {...(style.diffStyle === 'full' || style.diffWidth === 'full' ? { flexGrow: 1 } : { alignItems: 'flex-start' as const })}>{cards}</el.Box>
   </el.Box>
 )
 

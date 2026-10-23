@@ -9,6 +9,8 @@ import { nestedBlocks, parse } from './markdown'
 import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { FIGURE_HINT } from './figure'
+import type { DiffPalette } from './diff-palettes'
+import { DIFF_PALETTES, DIFFS_TEXT, paletteOptions } from './diff-palettes'
 import { drawDraft, isDraftLang } from './draft'
 import { drawHandoff, handoffLast, isHandoffLang } from './handoff'
 import { drawDiagrams } from './mermaid'
@@ -327,7 +329,7 @@ const copyTable = async ($: EngineInterface, backend: ClipboardBackend, html: st
 const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[], faces = false): Fold => (id, hidden, key, look) => {
   if (!open) return null
   const folded = !open.includes(id)
-  const label = folded ? look?.label ?? `+${hidden} more lines` : 'show less'
+  const label = folded ? look?.label ?? `+${hidden} more lines` : look?.close ?? 'show less'
   const toggle = () => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))
   if (!faces) return { folded, faced: false, element: <el.Button key={key} variant="secondary" label={label} onPress={toggle} /> }
   const element = look?.face ? <el.Button key={key} plain label={label} onPress={toggle}>{look.face(folded)}</el.Button> : <el.Button key={key} variant="secondary" label={label} onPress={toggle} />
@@ -701,6 +703,7 @@ export const register: Register = (on, options) => {
     const [first, second, third] = e.args.trim().split(/\s+/)
     const [sub, name] = THEME_ARGS.includes(first ?? '') ? ['theme', first] : [first, second]
     if (sub === 'demo') return { text: showcaseText(PRESET_NAMES) + languageShowcase(await localeOf($, name)) }
+    if (sub === 'diffs') return { text: DIFFS_TEXT }
     if (sub === 'setup') return { text: await setup($, picked, e.origin, name, third) }
     if (sub === 'copy') {
       const reply = (await $.session.messages()).findLast(m => m.role === 'assistant' && m.text.trim())
@@ -804,6 +807,23 @@ export const register: Register = (on, options) => {
       const el = $.ui.resolve(e)
       const base = { ...forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), copyButtons: false, pathLinks: false }
       return <el.Box flexDirection="column" rowGap={1}>{drawSetup($, el, base, options, found, columnsOf(e.viewport))}</el.Box>
+    }
+    if (e.props.command === 'prismantis' && e.props.text.trim().endsWith(DIFFS_TEXT)) {
+      const el = $.ui.resolve(e)
+      const base = { ...forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), copyButtons: false, pathLinks: false, diffStyle: 'card' as const, diffWidth: 'full' as const, diffFold: 'none' as const, diffPath: true }
+      const columns = columnsOf(e.viewport)
+      const sample = (p: DiffPalette, i: number) => {
+        const theme = { ...base.theme, diffBackground: p.diffBackground, ...(p.diffAdded ? { diffAdded: p.diffAdded } : {}), ...(p.diffRemoved ? { diffRemoved: p.diffRemoved } : {}) }
+        const drawn: Style = { ...base, theme, ...(p.tint === undefined ? {} : { diffTint: p.tint / 100 }), ...(p.word === undefined ? {} : { diffWordTint: p.word / 100 }), ...(p.border === undefined ? {} : { diffBorder: p.border }) }
+        return (
+          <el.Box key={`p${i}`} flexDirection="column">
+            <el.Text bold>{`${i + 1}. ${p.name}`}</el.Text>
+            <el.Text dimColor>{paletteOptions(p)}</el.Text>
+            {renderDiffCard(el, drawn, SETUP_EDIT, () => null, `palette${i}`, columns)}
+          </el.Box>
+        )
+      }
+      return <el.Box flexDirection="column" rowGap={1}><el.Text>{DIFFS_TEXT}</el.Text>{DIFF_PALETTES.map(sample)}</el.Box>
     }
     const blocks = parseCached(e.props.text)
     if (blocks.length === 0) return next(e)

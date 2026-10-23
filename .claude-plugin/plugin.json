@@ -342,6 +342,50 @@
       "default": "card",
       "options": ["card", "full", "marks", "bar"]
     },
+    "diffWidth": {
+      "type": "string",
+      "title": "Diff width",
+      "description": "fit: a diff card is as wide as its longest line. full (fork): every card spans the window, its tinted lines too, so cards line up.",
+      "default": "fit",
+      "options": ["fit", "full"]
+    },
+    "diffFold": {
+      "type": "string",
+      "title": "Diff folding",
+      "description": "none: a diff card always shows its lines. open (fork): a hide button on the card's head folds it to the head line; it starts open. folded (fork): it starts as the head line, with a show button.",
+      "default": "none",
+      "options": ["none", "open", "folded"]
+    },
+    "diffTint": {
+      "type": "string",
+      "title": "Diff tint",
+      "description": "How strongly added and removed lines are tinted (fork): the percent of the diff color in their background, 0 to 60, lowered further where code text would drop below 4.5:1; 0 leaves the lines on the card's ground and tints only the changed words. Empty keeps 30 on dark themes and 20 on light ones.",
+      "default": ""
+    },
+    "diffWordTint": {
+      "type": "string",
+      "title": "Diff word tint",
+      "description": "How strongly the changed words stand out from their line (fork): the percent of the diff color laid over the line's tint, 0 to 90. Empty keeps 30.",
+      "default": ""
+    },
+    "diffBorder": {
+      "type": "boolean",
+      "title": "Diff card border",
+      "description": "Draw the rounded border of a diff card (diffStyle card). Off, with diffBackgroundColor set, the card is a filled block; off without it, the lines stand alone (fork).",
+      "default": true
+    },
+    "diffPath": {
+      "type": "boolean",
+      "title": "Diff file name",
+      "description": "Put the edited file's path before the +N −M counts on an edit's diff card (fork); shell edit cards always show it.",
+      "default": false
+    },
+    "diffBackgroundColor": {
+      "type": "string",
+      "title": "Diff card background",
+      "description": "Background of a diff card (diffStyle card, fork); the added and removed tints are mixed into it. Hex, rgb(), ansi256() or a name. Empty leaves the terminal's background.",
+      "default": ""
+    },
     "pieStyle": {
       "type": "string",
       "title": "Pie style",

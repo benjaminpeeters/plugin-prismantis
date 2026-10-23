@@ -9,7 +9,7 @@ import { TERMINALS } from './rtl'
 export const TOKENS = [
   'accent', 'heading', 'strong', 'emphasis', 'inlineCode', 'codeText', 'codeCommand', 'codeFlag', 'codeString', 'codeComment',
   'link', 'path', 'number', 'quote', 'rule', 'tableHeader', 'tableRule', 'bullet', 'diagram', 'diagramText', 'diffAdded', 'diffRemoved',
-  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
+  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground',
 ] as const
 
 export type Theme = Partial<Record<(typeof TOKENS)[number], string>>
@@ -31,6 +31,12 @@ export type Style = {
   noteKey?: string
   pressPreview?: boolean
   diffStyle: 'card' | 'full' | 'marks' | 'bar'
+  diffWidth: 'fit' | 'full'
+  diffFold: 'none' | 'open' | 'folded'
+  diffTint?: number
+  diffWordTint?: number
+  diffPath: boolean
+  diffBorder: boolean
   pieStyle: 'round' | 'bars'
   highlightNumbers: boolean
   highlightPaths: boolean
@@ -70,7 +76,14 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 
 export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte|light|dawn/.test(t) && t !== 'mono')
 
-export const pickTheme = (value: unknown, random = Math.random): string => {
+// diffTint and diffWordTint: a percent, 0 to 60 and 0 to 90, of the diff color in a changed
+// line's background and on top of it under a changed word; anything else keeps the built-in share.
+const tintShare = (value: unknown, max: number): number | undefined => {
+  const percent = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
+  return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : undefined
+}
+
+export const pickTheme =(value: unknown, random = Math.random): string => {
   const name = value === 'random' ? RANDOM_THEMES[Math.floor(random() * RANDOM_THEMES.length)] : value
   return (PRESET_NAMES as readonly unknown[]).includes(name) ? String(name) : 'catppuccin-mocha'
 }
@@ -95,6 +108,12 @@ export const resolveStyle = (options: PluginOptions): Style => {
     toolStyle: pick(options.toolStyle, ['chat', 'tree-dim', 'tree-bold', 'classic'] as const, 'chat'),
     toolOutput: pick(options.toolOutput, ['full', 'quiet'] as const, 'full'),
     diffStyle: pick(options.diffStyle, ['card', 'full', 'marks', 'bar'] as const, 'card'),
+    diffWidth: pick(options.diffWidth, ['fit', 'full'] as const, 'fit'),
+    diffFold: pick(options.diffFold, ['none', 'open', 'folded'] as const, 'none'),
+    ...(tintShare(options.diffTint, 60) === undefined ? {} : { diffTint: tintShare(options.diffTint, 60) }),
+    ...(tintShare(options.diffWordTint, 90) === undefined ? {} : { diffWordTint: tintShare(options.diffWordTint, 90) }),
+    diffPath: options.diffPath === true,
+    diffBorder: options.diffBorder !== false,
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,
     highlightPaths: options.highlightPaths !== false,
