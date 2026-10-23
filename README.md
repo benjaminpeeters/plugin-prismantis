@@ -267,7 +267,25 @@ CMD: |
 ```
 ````
 
-`CLAUDE:` is typed into the Claude Code prompt, `CMD:` into a terminal; `CMD: |` takes the next lines indented 4 spaces as one command. Each entry's explanation follows as `#` lines indented 2 spaces, `# expect:` naming the outcome. Every hand-off block of a reply draws as one card after its last other block, Claude Code inputs first, each entry with its own copy button (shown even with `copyButtonStyle: hover`). A malformed entry is never dropped: an unknown key, a slash command keyed `CMD:`, an entry without explanation or a stray line each get a red `✗ handoff:` line under the card. `handoff: false` leaves the blocks as plain code where they were written. Claude learns the format from a session note (plugin-display-hint), not from this plugin.
+`CLAUDE:` is typed into the Claude Code prompt, `CMD:` into a terminal; `CMD: |` takes the next lines indented 4 spaces as one command. Each entry's explanation follows as `#` lines indented 2 spaces, `# expect:` naming the outcome. Every hand-off block of a reply draws as one card after its last other block, Claude Code inputs first, each entry with its own copy icon (the `copyIcon` glyph) on its right, which copies the command on click. A malformed entry is never dropped: an unknown key, a slash command keyed `CMD:`, an entry without explanation or a stray line each get a red `✗ handoff:` line under the card. `handoff: false` leaves the blocks as plain code where they were written. Claude learns the format from a session note (plugin-display-hint), not from this plugin.
+
+### Draft cards
+
+Fork addition. Text you send on yourself (a prompt for another Claude session, an email, a chat message, a GitHub comment) goes in a ` ```draft ` block: header fields, a `---` line, then the body exactly as it is to be pasted.
+
+````
+```draft
+kind: email
+to: Alice
+subject: Thursday's meeting
+---
+Hi Alice,
+
+The meeting moves to **Thursday at 10**.
+```
+````
+
+`kind` is `prompt`, `email`, `message` or `comment`, and names the card: `Prompt for another session`, `Email`, `Message`, `GitHub comment`, each in its own color; `title` follows it, `to` sits under it, and `subject` (emails only) gets its own copy icon. The body draws as markdown at the card's width, while the copy icon in the card's top-right corner copies it exactly as written, markdown included, with no wrapping or indent. A body that holds ` ``` ` fences opens the draft with four backticks. A malformed header (unknown kind or field, no `---`, an empty body, a subject on anything but an email) gets a red `✗ draft:` line under the card. Drafts stay where they were written. `drafts: false` leaves them as plain code.
 
 ### Slash commands
 
@@ -370,7 +388,12 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `toolStyle` | `chat`, `tree-dim`, `tree-bold`, `classic` | `chat` |
 | `toolOutput` | `full`, `quiet` | `full` |
 | `copyButtons` | `true`, `false` | `true` |
-| `copyButtonStyle` | `inline`, `hover` | `inline` |
+| `copyButtonStyle` | `inline`, `hover`, `icon` (fork: as `hover`, but a marker with one action copies on click) | `inline` |
+| `copyIcon` | the copy marker's glyph, one cell wide (fork), e.g. a Nerd Font icon | `⧉` |
+| `replyCopy` | `message` (a button under each multi-block message), `footer` (fork: terminal only, an icon after the turn footer copying the turn's final answer) | `message` |
+| `turnWord` | a fixed word for the turn footer, drawn without `✻` (fork): `Ran` gives `Ran for 5m 54s` | Claude Code's word |
+| `handoff` | `true`, `false` (fork, see [Hand-off blocks](#hand-off-blocks)) | `true` |
+| `drafts` | `true`, `false` (fork, see [Draft cards](#draft-cards)) | `true` |
 | `diagramHints` | `true`, `false` | `true` |
 | `issueHint` | `true`, `false` | `true` |
 | `rtl` | `auto`, a terminal (`warp`, `kitty`, `apple-terminal`, `iterm`, `ghostty`, `wezterm`, `vscode`, `alacritty`, `windows-terminal`, `gnome`, `konsole`), `off` | `auto` |

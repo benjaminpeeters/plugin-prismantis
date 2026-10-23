@@ -37,7 +37,8 @@ export type Style = {
   mermaid: boolean
   mermaidAscii: boolean
   copyButtons: boolean
-  copyButtonStyle: 'inline' | 'hover'
+  copyButtonStyle: 'inline' | 'hover' | 'icon'
+  replyCopy: 'message' | 'footer'
   htmlCopy: ClipboardBackend | null
   nativeCode?: boolean
   gridFace?: boolean
@@ -49,6 +50,9 @@ export type Style = {
   diagramHints: boolean
   issueHint: boolean
   handoff: boolean
+  drafts: boolean
+  copyIcon: string
+  turnWord: string
   rtl: 'auto' | Terminal | 'off'
   reorder: boolean
   shape: Shape
@@ -97,7 +101,8 @@ export const resolveStyle = (options: PluginOptions): Style => {
     mermaid: options.mermaid !== false,
     mermaidAscii: options.mermaidAscii === true,
     copyButtons: options.copyButtons !== false,
-    copyButtonStyle: pick(options.copyButtonStyle, ['inline', 'hover'] as const, 'inline'),
+    copyButtonStyle: pick(options.copyButtonStyle, ['inline', 'hover', 'icon'] as const, 'inline'),
+    replyCopy: pick(options.replyCopy, ['message', 'footer'] as const, 'message'),
     htmlCopy: null,
     httpLinks: false,
     editorLinks: false,
@@ -106,6 +111,9 @@ export const resolveStyle = (options: PluginOptions): Style => {
     diagramHints: options.diagramHints !== false && options.mermaid !== false,
     issueHint: options.issueHint !== false,
     handoff: options.handoff !== false,
+    drafts: options.drafts !== false,
+    copyIcon: typeof options.copyIcon === 'string' && options.copyIcon.trim() ? options.copyIcon.trim() : '⧉',
+    turnWord: typeof options.turnWord === 'string' ? options.turnWord.trim() : '',
     rtl,
     reorder: rtl !== 'auto' && rtl !== 'off',
     shape: rtl === 'auto' || rtl === 'off' ? 'visual' : TERMINALS[rtl],

@@ -80,25 +80,24 @@ const BADGE: Record<HandoffKey, string> = { CLAUDE: 'Claude Code', CMD: 'Termina
 
 const BADGE_WIDTH = Math.max(...Object.values(BADGE).map(label => label.length))
 
-// Border and padding on each side, the gap after the badge, and the copy button with its gap.
+// Border and padding on each side, and the gap after the badge.
 const FRAME = 4
 const GAPS = 2
-const COPY_LABEL = '[ ⧉ copy ]'
 
 // The card is as wide as its longest line, at most `columns`; the text column between badge and
-// button then wraps, so a long note or command continues under itself, not under the badge.
+// copy icon then wraps, so a long note or command continues under itself, not under the badge.
+// `copy` draws the icon that copies one entry's command.
 export const drawHandoff = ({ Box, Text }: ElementTable, style: Style, lines: readonly string[], copy: CopyButton | undefined, key: string, columns: number): RenderElement => {
   const t = style.theme
   const { entries, problems } = parseHandoff(lines)
   const ordered = [...entries.filter(e => e.key === 'CLAUDE'), ...entries.filter(e => e.key === 'CMD')]
   const color = (e: HandoffEntry) => (e.key === 'CLAUDE' ? t.link : t.codeCommand)
-  const button = copy ? width(COPY_LABEL) + 2 : 0
+  const button = copy ? width(style.copyIcon) + 2 : 0
   const longest = Math.max(0, ...ordered.flatMap(e => [...e.command.split('\n'), ...e.notes].map(width)))
   const natural = FRAME + BADGE_WIDTH + GAPS + longest + button
   return (
     <Box key={key} flexDirection="column" alignSelf="flex-start">
-      <Box width={Math.min(columns, Math.max(natural, FRAME + width('For you to run')))} borderStyle="round" borderColor={t.codeComment} paddingX={1} flexDirection="column" rowGap={1}>
-        <Text bold color={t.strong}>For you to run</Text>
+      <Box width={Math.min(columns, natural)} borderStyle="round" borderColor={t.codeComment} paddingX={1} flexDirection="column" rowGap={1}>
         {ordered.map((e, i) => (
           <Box key={`${key}.${i}`} flexDirection="row" columnGap={2}>
             <Box width={BADGE_WIDTH} flexShrink={0}><Text bold color={color(e)}>{BADGE[e.key]}</Text></Box>

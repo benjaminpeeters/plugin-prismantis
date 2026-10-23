@@ -364,9 +364,9 @@
     "copyButtonStyle": {
       "type": "string",
       "title": "Copy button style",
-      "description": "inline: buttons beside or above each block, always shown. hover: each block shows a dim ⧉ beside its first row, and the reply one in its bottom-right corner; the pointer on a ⧉ draws its buttons over it, so they take no line; ctrl+x tab does not reach them, and the mobile app, which has no pointer, shows them inline. Needs copyButtons on.",
+      "description": "inline: buttons beside or above each block, always shown. hover: each block shows a dim ⧉ beside its first row, and the reply one in its bottom-right corner; the pointer on a ⧉ draws its buttons over it, so they take no line; ctrl+x tab does not reach them, and the mobile app, which has no pointer, shows them inline. icon (fork): as hover, but a marker with a single action is that action, so a click on it copies at once. Needs copyButtons on.",
       "default": "inline",
-      "options": ["inline", "hover"]
+      "options": ["inline", "hover", "icon"]
     },
     "issueHint": {
       "type": "boolean",
@@ -379,6 +379,31 @@
       "title": "Hand-off blocks",
       "description": "Draw ```handoff blocks (CLAUDE: and CMD: entries Claude hands you to run) as one card at the end of the reply, Claude Code inputs first, each with a copy button, and a red line for every malformed entry. Off leaves them as code.",
       "default": true
+    },
+    "drafts": {
+      "type": "boolean",
+      "title": "Draft cards",
+      "description": "Draw ```draft blocks (a prompt for another session, an email, a chat message or a GitHub comment you send yourself) as a card titled by its kind, the body drawn as markdown, with a copy button that copies the body exactly as written (and one for an email's subject), and a red line for every malformed header. Off leaves them as code.",
+      "default": true
+    },
+    "copyIcon": {
+      "type": "string",
+      "title": "Copy icon",
+      "description": "The glyph of a copy marker: on hand-off and draft cards, beside the turn footer, and on hover markers. A marker with one action copies on click; one with several opens them. One terminal cell wide, e.g. a Nerd Font icon such as . Empty uses ⧉.",
+      "default": ""
+    },
+    "turnWord": {
+      "type": "string",
+      "title": "Turn footer word",
+      "description": "A fixed word for the line that closes a turn, drawn without the ✻: Ran gives 'Ran for 5m 54s'. Empty keeps Claude Code's changing word (✻ Baked for …).",
+      "default": ""
+    },
+    "replyCopy": {
+      "type": "string",
+      "title": "Copy reply",
+      "description": "Where the button that copies a whole reply sits. message: under each multi-block message. footer: on the terminal, a copy icon right after the turn footer (✻ Baked for … · 18:31), copying the turn's final answer; other surfaces keep message. Needs copyButtons on.",
+      "default": "message",
+      "options": ["message", "footer"]
     },
     "diagramHints": {
       "type": "boolean",

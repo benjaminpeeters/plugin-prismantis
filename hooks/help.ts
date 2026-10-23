@@ -96,7 +96,7 @@ A file Write creates shows its first 10 lines as numbered code in the theme's co
 
 ### Hand-off blocks
 
-What Claude hands you to run goes in a \`handoff\` block: \`CLAUDE:\` for the Claude Code prompt, \`CMD:\` for a terminal. All of a reply's hand-offs draw as one card at its end, Claude Code inputs first, each with its own copy button; a malformed entry gets a red line. Turn it off with \`handoff\` in \`/config\`.
+What Claude hands you to run goes in a \`handoff\` block: \`CLAUDE:\` for the Claude Code prompt, \`CMD:\` for a terminal. All of a reply's hand-offs draw as one card at its end, Claude Code inputs first, each with its own copy icon; a malformed entry gets a red line. Turn it off with \`handoff\` in \`/config\`.
 
 \`\`\`handoff
 CMD: sudo apt install gum
@@ -105,6 +105,20 @@ CMD: sudo apt install gum
 
 CLAUDE: /reload-plugins
   # loads the plugins changed on disk
+\`\`\`
+
+### Draft cards
+
+Text you send on yourself goes in a \`draft\` block, titled by its kind: \`prompt\` (for another session), \`email\`, \`message\` or \`comment\`. The body draws as markdown; the copy icon at the top right copies it exactly as written, and an email's subject has its own icon. Turn it off with \`drafts\` in \`/config\`.
+
+\`\`\`draft
+kind: email
+to: Alice
+subject: Thursday's meeting
+---
+Hi Alice,
+
+The meeting moves to **Thursday at 10**. The agenda is unchanged.
 \`\`\`
 
 ### Quotes and rules

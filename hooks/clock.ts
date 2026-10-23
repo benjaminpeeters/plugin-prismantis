@@ -27,12 +27,22 @@ export const sentAt = (sent: readonly Sent[], text: string, drawnAt: number): nu
   return sent.findLast(one => one.text === key && one.at <= drawnAt)?.at
 }
 
-export const endedAt = (ends: readonly TurnEnd[], durationMs: number, drawnAt: number): number | undefined => {
-  let best: TurnEnd | undefined
+export const endedAt = (ends: readonly TurnEnd[], durationMs: number, drawnAt: number): number | undefined => turnOf(ends, durationMs, drawnAt)?.at
+
+// The record of the turn a footer closes: the closest duration, ended before the footer was drawn.
+export const turnOf = <T extends TurnEnd>(ends: readonly T[], durationMs: number, drawnAt: number): T | undefined => {
+  let best: T | undefined
   for (const end of ends) {
     if (end.at > drawnAt) continue
     const gap = Math.abs(end.durationMs - durationMs)
     if (gap <= SLACK_MS && (best === undefined || gap <= Math.abs(best.durationMs - durationMs))) best = end
   }
-  return best?.at
+  return best
 }
+
+// A turn's final answer, for the footer's copy button; fewer kept than turn ends, as each holds a reply.
+export type TurnReply = TurnEnd & { text: string }
+
+const KEEP_REPLIES = 50
+
+export const withReply = (list: readonly TurnReply[], reply: TurnReply): TurnReply[] => [...list, reply].slice(-KEEP_REPLIES)

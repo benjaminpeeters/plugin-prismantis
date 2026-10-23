@@ -83,19 +83,21 @@ const mount = () => ({
   surface: 'terminal' as const,
 })
 
-test('a reply draws one hand-off card at its end, Claude Code inputs first, each entry with its own copy button', async ($, on) => {
+test('a reply draws one hand-off card at its end, Claude Code inputs first, each entry with its own copy icon', { options: { copyIcon: '' } }, async ($, on) => {
   const copies = recordCopies(on)
   recordToasts(on)
   const ui = await $.ui.mount(mount())
   const texts = (await ui.findAll({ type: 'Text' })).map(node => node.text)
   const at = (pattern: RegExp) => texts.findIndex(text => pattern.test(text ?? ''))
-  expect(at(/^For you to run$/)).toBeGreaterThan(at(/^Done with the edit\.$/))
+  expect(at(/^Claude Code$/)).toBeGreaterThan(at(/^Done with the edit\.$/))
   expect(at(/^Claude Code$/)).toBeLessThan(at(/^Terminal$/))
+  expect(at(/^For you to run$/)).toBe(-1)
   expect(at(/expect: gum --version prints a version/)).toBeGreaterThan(-1)
-  expect(at(/^✗ handoff: CMD: \/add-dir ~\/x is a slash command: key it CLAUDE:$/)).toBeGreaterThan(at(/^For you to run$/))
-  const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
-  expect(labels.filter(label => label === '⧉ copy')).toHaveLength(3)
-  expect(labels).not.toContain('⧉ source')
+  expect(at(/^✗ handoff: CMD: \/add-dir ~\/x is a slash command: key it CLAUDE:$/)).toBeGreaterThan(at(/^Terminal$/))
+  const icons = (await ui.findAll({ type: 'Button' })).filter(button => button.props.label === 'copy')
+  expect(icons).toHaveLength(3)
+  expect(icons.every(button => button.props.plain && button.text === '')).toBe(true)
+  expect((await ui.findAll({ type: 'Button' })).map(button => button.props.label)).not.toContain('⧉ source')
   await ui.press({ key: 'b1.copy0' })
   await ui.press({ key: 'b1.copy1' })
   expect(copies).toEqual(['/reload-plugins', 'sudo apt install gum'])
@@ -123,13 +125,13 @@ test('a short card stays as narrow as its content', async $ => {
 
 test('hover copy buttons still leave each hand-off entry its own visible copy button', { options: { copyButtonStyle: 'hover' } }, async $ => {
   const ui = await $.ui.mount(mount())
-  expect((await ui.findAll({ type: 'Button' })).filter(button => button.props.label === '⧉ copy')).toHaveLength(3)
+  expect((await ui.findAll({ type: 'Button' })).filter(button => button.props.label === 'copy')).toHaveLength(3)
   await ui.unmount()
 })
 
 test('handoff off leaves hand-off blocks as code where they were written', { options: { handoff: false } }, async $ => {
   const ui = await $.ui.mount(mount())
-  expect(await ui.find({ type: 'Text', text: /^For you to run$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Claude Code$/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /handoff/ })).toBeTruthy()
   await ui.unmount()
 })

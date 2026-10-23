@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, PromptOrigin, Register, RenderElement, RenderSurface } from 'claude-code'
 
-import { clockText, endedAt, promptKey, sentAt, withRecord } from './clock'
+import { clockText, endedAt, promptKey, sentAt, turnOf, withRecord, withReply } from './clock'
 import type { Formula } from './latex'
 import { LATEX_DPR, LATEX_FONT_PX, MAX_IMAGE_BYTES, fitImage, fitsImage, imageFile, imageOf, keepFormulas, mathOf, padFor, pickFormula, pngSize, ratexColor, renderedOf } from './latex'
 import type { Block } from './markdown'
@@ -9,10 +9,11 @@ import { nestedBlocks, parse } from './markdown'
 import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { FIGURE_HINT } from './figure'
+import { drawDraft, isDraftLang } from './draft'
 import { drawHandoff, handoffLast, isHandoffLang } from './handoff'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
-import { MARK, bashEdits, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import { MARK, bashEdits, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -63,6 +64,7 @@ const latexDir = atom({ plugin: 'prismantis', key: 'dir' } as const, '')
 const unfolded = atom({ plugin: 'prismantis', key: 'unfolded' } as const, [] as string[])
 const sent = atom({ plugin: 'prismantis', key: 'sent' } as const, [])
 const turnEnds = atom({ plugin: 'prismantis', key: 'turnEnds' } as const, [])
+const replies = atom({ plugin: 'prismantis', key: 'replies' } as const, [])
 const setupAt = atom({ plugin: 'prismantis', key: 'setupAt' } as const, 0)
 const setupFocus = atom({ plugin: 'prismantis', key: 'setupFocus' } as const, '')
 const setupLand = atom({ plugin: 'prismantis', key: 'setupLand' } as const, '')
@@ -353,10 +355,20 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       />
     ) : null
   }
+  const icon = (text: string | (() => string), key: string, label = 'copy') => {
+    const button = copy(text, key, label)
+    return button ? iconButton(el, style, button, key) : null
+  }
   const drawn = drawDiagrams(el, style, blocks, columns - markerRoom(style))
   if (style.handoff) {
     for (const [i, block] of blocks.entries()) {
-      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, copy, `b${i}`, columns - markerRoom(style)) })
+      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, icon, `b${i}`, columns - markerRoom(style)) })
+    }
+  }
+  if (style.drafts) {
+    const body = (text: string, width: number) => drawMarkdown($, el, { ...style, inside: 'quote' }, parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths }), width)
+    for (const [i, block] of blocks.entries()) {
+      if (block.kind === 'code' && isDraftLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawDraft(el, style, block.lines, icon, `b${i}`, columns - markerRoom(style), body) })
     }
   }
   const Image = 'Image' in el ? el.Image : null
@@ -374,14 +386,15 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
   const elements = renderBlocks(el, notes ? { ...style, noteKey: instanceKey(notes.id) } : style, blocks, columns, drawMath(el, style, blocks, drawn), copy, folder($, el, open), tip)
   const button = reply === undefined ? null : copy(reply, 'reply', '⧉ copy reply')
   if (!button) return elements
-  return [...elements, style.copyButtonStyle === 'hover' ? replyMarker(el, button, notes?.id) : <el.Box key="reply" alignSelf="flex-end">{button}</el.Box>]
+  return [...elements, style.copyButtonStyle === 'inline' ? <el.Box key="reply" alignSelf="flex-end">{button}</el.Box> : replyMarker(el, style, button, notes?.id)]
 }
 
-const replyMarker = (el: ReturnType<EngineInterface['ui']['resolve']>, button: RenderElement, id?: string) => {
+const replyMarker = (el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, button: RenderElement, id?: string) => {
+  if (style.copyButtonStyle === 'icon') return <el.Box key="reply" position="absolute" bottom={0} right={-MARK}>{iconButton(el, style, button, 'reply.icon')}</el.Box>
   const scope = `copy:${id === undefined ? '' : instanceKey(id)}:reply`
   return (
     <el.Box key="reply" position="absolute" bottom={0} right={-MARK} hover={{ scope }}>
-      <el.Text dimColor>⧉</el.Text>
+      <el.Text dimColor>{style.copyIcon}</el.Text>
       <el.Box position="absolute" top={0} right={0} display="none" hover={{ scope, display: 'flex' }}>{button}</el.Box>
     </el.Box>
   )
@@ -609,7 +622,7 @@ export const register: Register = (on, options) => {
   const pathChecks: PathChecks = { asked: new Set(), batch: [], found: new Set() }
   const forSurface = (base: Style, surface: RenderSurface, links: LinkReach): Style => {
     const drawn = surface === 'terminal' ? (links.http || links.editor ? { ...base, httpLinks: links.http, editorLinks: links.editor, fileLinks: links.files, pathLinks: links.paths } : base) : { ...base, htmlCopy: null, nativeCode: true, gridFace: surface === 'desktop' }
-    return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
+    return surface === 'mobile' && drawn.copyButtonStyle !== 'inline' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
   }
   const fullWidth = (text: string) => (style.reorder && hasRtl(text) ? { width: '100%' as const } : {})
 
@@ -710,13 +723,25 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'TurnDuration' }, async ($, e) => {
     const at = style.clock === 'off' ? undefined : endedAt(await read($, turnEnds), e.props.durationMs, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now(), style.clock)
-    return renderTurnDuration($.ui.resolve(e), style, e.props.word, e.props.durationMs, time)
+    const el = $.ui.resolve(e)
+    const footer = renderTurnDuration(el, style, e.props.word, e.props.durationMs, time)
+    const kept = style.copyButtons && style.replyCopy === 'footer' ? await read($, replies) : []
+    const answer = kept.length ? turnOf(kept, e.props.durationMs, await firstDrawn($, e.requestId))?.text : undefined
+    if (!answer) return footer
+    const copy = async (press: { surface: RenderSurface }) => {
+      const result = await $.ui.copy({ text: answer, surface: press.surface })
+      $.ui.toast(result.isCopied ? 'Copied the reply' : `Copy failed: ${result.reason}`)
+    }
+    const button = <el.Button key="turn.copy" variant="primary" label="copy reply" onPress={copy} />
+    return <el.Box flexDirection="row" columnGap={2}>{footer}{iconButton(el, style, button, 'turn.copy')}</el.Box>
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (style.clock !== 'off' && e.agentId === undefined) {
+    const keep = style.copyButtons && style.replyCopy === 'footer' && e.answer !== ''
+    if (e.agentId === undefined && (style.clock !== 'off' || keep)) {
       const at = await $.clock.now()
-      await update($, turnEnds, list => withRecord(list, { durationMs: e.durationMs, at }))
+      if (style.clock !== 'off') await update($, turnEnds, list => withRecord(list, { durationMs: e.durationMs, at }))
+      if (keep) await update($, replies, list => withReply(list, { durationMs: e.durationMs, at, text: e.answer }))
     }
     return next(e)
   })
@@ -829,7 +854,9 @@ export const register: Register = (on, options) => {
     const pictures = await picturesOf($, style, probes, e.surface, blocks)
     const surfaceStyle = await withFoundPaths($, pathChecks, forSurface(fit(e.viewport), e.surface, reach), blocks)
     const open = await read($, unfolded)
-    const reply = blocks.length > 1 || hasRtl(e.props.text) ? e.props.text : undefined
+    // With replyCopy: footer, the terminal copies the whole reply from its turn footer, so a message carries no button of its own.
+    const fromFooter = style.replyCopy === 'footer' && e.surface === 'terminal'
+    const reply = !fromFooter && (blocks.length > 1 || hasRtl(e.props.text)) ? e.props.text : undefined
     const corner = reply !== undefined && markerRoom(surfaceStyle) > 0
     return (
       <Box key="msg" flexDirection="row">

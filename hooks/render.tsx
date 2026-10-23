@@ -1,5 +1,6 @@
 import type { ElementTable, RenderElement, RenderNode, TextHoverProps } from 'claude-code'
 
+import { isDraftLang } from './draft'
 import { isHandoffLang } from './handoff'
 import { tableHtml, tableText } from './html'
 import type { Block, Inline } from './markdown'
@@ -1187,11 +1188,20 @@ const holdsOnlyEmptyCode = (block: Block): boolean =>
 
 export const MARK = 2
 
-export const markerRoom = (style: Style): number => (style.copyButtons && style.copyButtonStyle === 'hover' ? MARK : 0)
+export const markerRoom = (style: Style): number => (style.copyButtons && style.copyButtonStyle !== 'inline' ? MARK : 0)
 
 const codeLabel = (block: Extract<Block, { kind: 'code' }>): string => `── ${block.lang || 'code'}`
 
-type Float = { needs: number; marker: RenderElement; element: RenderElement }
+type Float = { needs: number; marker: RenderElement; element: RenderElement | null }
+
+// With copyButtonStyle: icon, a copy marker with one action is that action: the icon is the
+// button, so a click copies at once instead of opening a menu of one.
+// The Button keeps its press handle, so the icon runs the very handler the button was drawn with.
+export const iconButton = ({ Text }: ElementTable, style: Style, button: RenderElement, key: string): RenderElement => {
+  if (button.type !== 'Button') return button
+  const { variant: _, ...props } = button.props
+  return { ...button, props: { ...props, key, plain: true }, children: [<Text key="icon" dimColor>{style.copyIcon}</Text>] }
+}
 
 const buttonText = (button: RenderElement | null | undefined): string | undefined =>
   button?.type === 'Button' ? `[ ${button.props.label} ]` : button?.type === 'Text' ? (button.children ?? []).filter((c): c is string => typeof c === 'string').join('') : undefined
@@ -1212,7 +1222,7 @@ const markedRow = ({ Box }: ElementTable, key: string, element: RenderElement, f
 export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
-  const hover = style.copyButtonStyle === 'hover'
+  const hover = style.copyButtonStyle !== 'inline'
   const reserved = (buttons: (RenderElement | null | undefined)[]): number =>
     buttons.reduce<number>((w, button) => {
       const shown = buttonText(button)
@@ -1223,9 +1233,12 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   const scopeOf = (button: RenderElement): string => `copy:${style.noteKey ?? ''}:${keyOf(button)}`
   const floating = (kept: RenderElement[], low = false, start = false): Float => {
     const scope = scopeOf(kept[0]!)
+    if (style.copyButtonStyle === 'icon' && kept.length === 1 && kept[0]!.type === 'Button') {
+      return { needs: width(style.copyIcon), marker: <Box flexShrink={0} alignSelf={low ? 'flex-end' : 'flex-start'}>{iconButton(el, style, kept[0]!, `${keyOf(kept[0]!)}.icon`)}</Box>, element: null }
+    }
     return {
       needs: reserved(kept),
-      marker: <Box flexShrink={0} alignSelf={low ? 'flex-end' : 'flex-start'} hover={{ scope }}><Text dimColor>⧉</Text></Box>,
+      marker: <Box flexShrink={0} alignSelf={low ? 'flex-end' : 'flex-start'} hover={{ scope }}><Text dimColor>{style.copyIcon}</Text></Box>,
       element: <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} {...(start ? { left: 0 } : { right: 0 })} display="none" hover={{ scope, display: 'flex' }}>{kept.flatMap((button, i) => (i ? [<Text key={`gap${i}`}> </Text>, button] : [button]))}</Box>,
     }
   }
@@ -1234,9 +1247,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   const buttons = blocks.map((block, b) => {
     const text = hover && holdsOnlyEmptyCode(block) ? undefined : copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
-    const isHandoffCard = block.kind === 'code' && isHandoffLang(block.lang) && !!drawn.get(b)?.element
+    const isCard = block.kind === 'code' && (isHandoffLang(block.lang) || isDraftLang(block.lang)) && !!drawn.get(b)?.element
     const art = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tableArt(block) : undefined)
-    const first = text === undefined || isPlainCode || isHandoffCard ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
+    const first = text === undefined || isPlainCode || isCard ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
     const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
     return { first, second, html }
@@ -2641,7 +2654,7 @@ export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: s
   const value = style.theme.turnDuration ?? style.theme.number
   return (
     <Text color={style.theme.turnDuration ?? style.theme.codeComment}>
-      {`✻ ${word} for `}
+      {style.turnWord ? `${style.turnWord} for ` : `✻ ${word} for `}
       <Text color={value}>{formatDuration(durationMs)}</Text>
       {time === undefined ? null : ' · '}
       {time === undefined ? null : <Text color={value}>{time}</Text>}
