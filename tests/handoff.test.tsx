@@ -12,7 +12,8 @@ test('a handoff block parses single-line and multi-line entries with their notes
   const { entries, problems } = parseHandoff(lines([
     'CLAUDE: /add-dir ~/repo/foo',
     '  # makes foo writable for this session',
-    '  # expect: "Added ~/repo/foo"',
+    '  # Expect:  "Added ~/repo/foo"',
+    '  # if it fails, the path is wrong',
     '',
     'CMD: |',
     '    cd ~/x',
@@ -22,7 +23,7 @@ test('a handoff block parses single-line and multi-line entries with their notes
   ].join('\n')))
   expect(problems).toEqual([])
   expect(entries).toEqual([
-    { key: 'CLAUDE', command: '/add-dir ~/repo/foo', notes: ['makes foo writable for this session'], expect: '"Added ~/repo/foo"' },
+    { key: 'CLAUDE', command: '/add-dir ~/repo/foo', notes: ['makes foo writable for this session', 'expect: "Added ~/repo/foo"', 'if it fails, the path is wrong'] },
     { key: 'CMD', command: 'cd ~/x\n# a shell comment stays in the command\nmake install', notes: ['builds and installs x'] },
   ])
 })
@@ -98,6 +99,25 @@ test('a reply draws one hand-off card at its end, Claude Code inputs first, each
   await ui.press({ key: 'b1.copy0' })
   await ui.press({ key: 'b1.copy1' })
   expect(copies).toEqual(['/reload-plugins', 'sudo apt install gum'])
+  await ui.unmount()
+})
+
+test('in a narrow window the card fits it and its notes wrap in the text column, under themselves', async $ => {
+  const long = 'loads the new prismantis code (hand-off cards, heading colors) and display-hint, then redraws every reply'
+  const text = ['```handoff', 'CLAUDE: /reload-plugins', `  # ${long}`, '```'].join('\n')
+  const ui = await $.ui.mount({ ...mount(), props: { text, isFirstOfReply: true }, viewport: { columns: 60, rows: 40 } })
+  const card = (await ui.findAll({ type: 'Box' })).find(box => box.props.borderStyle === 'round')
+  expect(card?.props.width).toBeLessThanOrEqual(58)
+  const note = await ui.find({ type: 'Text', text: long })
+  expect(note?.props.wrap).toBe('wrap')
+  await ui.unmount()
+})
+
+test('a short card stays as narrow as its content', async $ => {
+  const text = ['```handoff', 'CLAUDE: /login', '  # logs in', '```'].join('\n')
+  const ui = await $.ui.mount({ ...mount(), props: { text, isFirstOfReply: true }, viewport: { columns: 200, rows: 40 } })
+  const card = (await ui.findAll({ type: 'Box' })).find(box => box.props.borderStyle === 'round')
+  expect(card?.props.width).toBeLessThan(50)
   await ui.unmount()
 })
 

@@ -356,7 +356,7 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
   const drawn = drawDiagrams(el, style, blocks, columns - markerRoom(style))
   if (style.handoff) {
     for (const [i, block] of blocks.entries()) {
-      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, copy, `b${i}`) })
+      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, copy, `b${i}`, columns - markerRoom(style)) })
     }
   }
   const Image = 'Image' in el ? el.Image : null

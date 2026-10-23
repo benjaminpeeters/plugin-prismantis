@@ -2,6 +2,7 @@ import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { Block } from './markdown'
 import type { CopyButton } from './render'
+import { width } from './render'
 import type { Style } from './theme'
 
 // A ```handoff block lists what the person runs themselves: CLAUDE: lines go in the Claude Code
@@ -10,7 +11,8 @@ import type { Style } from './theme'
 
 export type HandoffKey = 'CLAUDE' | 'CMD'
 
-export type HandoffEntry = { key: HandoffKey; command: string; notes: string[]; expect?: string }
+// notes keep the written order, the `expect:` line among them.
+export type HandoffEntry = { key: HandoffKey; command: string; notes: string[] }
 
 export type Handoff = { entries: HandoffEntry[]; problems: string[] }
 
@@ -23,6 +25,8 @@ const NOTE = /^ {1,3}#\s?(.*)$/
 const CONTINUED = /^ {4}(.*)$/
 
 export const isHandoffLang = (lang: string): boolean => lang.toLowerCase() === 'handoff'
+
+const isExpect = (note: string): boolean => /^expect:/i.test(note)
 
 export const parseHandoff = (lines: readonly string[]): Handoff => {
   const entries: (HandoffEntry & { block: boolean })[] = []
@@ -38,14 +42,12 @@ export const parseHandoff = (lines: readonly string[]): Handoff => {
     if (line.trim() === '') continue
     const note = NOTE.exec(line)
     const continued = CONTINUED.exec(line)
-    if (last?.block && !last.notes.length && last.expect === undefined && continued) {
+    if (last?.block && !last.notes.length && continued) {
       last.command = last.command ? `${last.command}\n${continued[1]}` : continued[1]!
       continue
     }
     if (last && note) {
-      const text = note[1]!.trim()
-      if (/^expect:/i.test(text)) last.expect = text.replace(/^expect:\s*/i, '')
-      else last.notes.push(text)
+      last.notes.push(note[1]!.trim().replace(/^expect:\s*/i, 'expect: '))
       continue
     }
     const other = OTHER_KEY.exec(line)
@@ -55,7 +57,7 @@ export const parseHandoff = (lines: readonly string[]): Handoff => {
     const name = e.command.split('\n')[0] || `${e.key}: |`
     if (!e.command) problems.push(e.block ? `${e.key}: | has no command lines indented 4 spaces` : `${e.key}: has no command`)
     if (e.key === 'CMD' && e.command.startsWith('/')) problems.push(`CMD: ${name} is a slash command: key it CLAUDE:`)
-    if (!e.notes.length && e.expect === undefined) problems.push(`${name} has no # explanation`)
+    if (!e.notes.length) problems.push(`${name} has no # explanation`)
   }
   if (!entries.length && !problems.length) problems.push('no CLAUDE: or CMD: entry')
   return { entries: entries.map(({ block: _, ...e }) => e), problems }
@@ -78,30 +80,37 @@ const BADGE: Record<HandoffKey, string> = { CLAUDE: 'Claude Code', CMD: 'Termina
 
 const BADGE_WIDTH = Math.max(...Object.values(BADGE).map(label => label.length))
 
-export const drawHandoff = ({ Box, Text }: ElementTable, style: Style, lines: readonly string[], copy: CopyButton | undefined, key: string): RenderElement => {
+// Border and padding on each side, the gap after the badge, and the copy button with its gap.
+const FRAME = 4
+const GAPS = 2
+const COPY_LABEL = '[ ⧉ copy ]'
+
+// The card is as wide as its longest line, at most `columns`; the text column between badge and
+// button then wraps, so a long note or command continues under itself, not under the badge.
+export const drawHandoff = ({ Box, Text }: ElementTable, style: Style, lines: readonly string[], copy: CopyButton | undefined, key: string, columns: number): RenderElement => {
   const t = style.theme
   const { entries, problems } = parseHandoff(lines)
   const ordered = [...entries.filter(e => e.key === 'CLAUDE'), ...entries.filter(e => e.key === 'CMD')]
   const color = (e: HandoffEntry) => (e.key === 'CLAUDE' ? t.link : t.codeCommand)
+  const button = copy ? width(COPY_LABEL) + 2 : 0
+  const longest = Math.max(0, ...ordered.flatMap(e => [...e.command.split('\n'), ...e.notes].map(width)))
+  const natural = FRAME + BADGE_WIDTH + GAPS + longest + button
   return (
     <Box key={key} flexDirection="column" alignSelf="flex-start">
-      <Box borderStyle="round" borderColor={t.codeComment} paddingX={1} flexDirection="column" rowGap={1}>
+      <Box width={Math.min(columns, Math.max(natural, FRAME + width('For you to run')))} borderStyle="round" borderColor={t.codeComment} paddingX={1} flexDirection="column" rowGap={1}>
         <Text bold color={t.strong}>For you to run</Text>
         {ordered.map((e, i) => (
-          <Box key={`${key}.${i}`} flexDirection="column">
-            <Box flexDirection="row" columnGap={2}>
-              <Box width={BADGE_WIDTH} flexShrink={0}><Text bold color={color(e)}>{BADGE[e.key]}</Text></Box>
-              <Box flexDirection="column" flexGrow={1}>
-                {e.command.split('\n').map((row, r) => <Text key={r} color={t.codeText}>{row}</Text>)}
-              </Box>
-              {copy?.(e.command, `${key}.copy${i}`) ?? null}
+          <Box key={`${key}.${i}`} flexDirection="row" columnGap={2}>
+            <Box width={BADGE_WIDTH} flexShrink={0}><Text bold color={color(e)}>{BADGE[e.key]}</Text></Box>
+            <Box width={0} flexGrow={1} flexDirection="column">
+              {e.command.split('\n').map((row, r) => <Text key={`c${r}`} color={t.codeText} wrap="wrap">{row}</Text>)}
+              {e.notes.map((note, n) => <Text key={`n${n}`} color={isExpect(note) ? t.number : t.codeComment} wrap="wrap">{note}</Text>)}
             </Box>
-            {e.notes.map((note, n) => <Text key={`n${n}`} color={t.codeComment}>{' '.repeat(BADGE_WIDTH + 2)}{note}</Text>)}
-            {e.expect === undefined ? null : <Text color={t.number}>{' '.repeat(BADGE_WIDTH + 2)}expect: {e.expect}</Text>}
+            {copy ? <Box flexShrink={0}>{copy(e.command, `${key}.copy${i}`)}</Box> : null}
           </Box>
         ))}
       </Box>
-      {problems.map((problem, p) => <Text key={`${key}.p${p}`} color={t.codeFlag}>✗ handoff: {problem}</Text>)}
+      {problems.map((problem, p) => <Text key={`${key}.p${p}`} color={t.codeFlag} wrap="wrap">✗ handoff: {problem}</Text>)}
     </Box>
   )
 }
