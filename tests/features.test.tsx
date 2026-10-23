@@ -457,6 +457,17 @@ test('clock adds the end time to the turn footer', { options: { clock: '24h' } }
   await ui.unmount()
 })
 
+test('turnDurationColor draws the whole turn footer in one color', { options: { clock: '24h', turnDurationColor: '#6c7086' } }, async ($, on) => {
+  mock.clock(on, { now: local(10, 14, 32) })
+  on('turn.complete', async (_$, e) => ({ text: e.answer }))
+  await $.turn.complete({ answer: 'done', durationMs: 380000, isAborted: false, turnId: 't1', reason: 'answer' })
+  const ui = await $.ui.mount({ plugin: 'prismantis', surface: 'terminal', component: 'TurnDuration', props: { word: 'Baked', durationMs: 380000 } })
+  expect((await ui.find({ type: 'Text', text: /^✻ Baked for / }))?.props.color).toBe('#6c7086')
+  expect((await ui.find({ type: 'Text', text: /^6m 20s$/ }))?.props.color).toBe('#6c7086')
+  expect((await ui.find({ type: 'Text', text: /^14:32$/ }))?.props.color).toBe('#6c7086')
+  await ui.unmount()
+})
+
 test('clock off, or a turn it never saw, leaves the turn footer as it was', async ($, on) => {
   mock.clock(on, { now: local(10, 14, 32) })
   on('turn.complete', async (_$, e) => ({ text: e.answer }))

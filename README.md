@@ -387,6 +387,7 @@ A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name
 | `diagramText` | diagram labels, LaTeX formulas and figure text |
 | `diffAdded` | added diff lines: their tint, `+` marks and count (the theme's own green) |
 | `diffRemoved` | removed diff lines: their tint, `−` marks and count (the theme's own red) |
+| `turnDuration` | the whole `✻ Worked for 8s · 14:32` line (unset: words in `codeComment`, duration and time in `number`) |
 
 ## Troubleshooting
 

@@ -287,6 +287,12 @@
       "description": "Color for removed diff lines: their - marks and count, and in hex the tint behind them, mixed into black or white so code text stays at 4.5:1. Hex, rgb(), ansi256() or a name. Empty uses the theme's red.",
       "default": ""
     },
+    "turnDurationColor": {
+      "type": "string",
+      "title": "Turn footer",
+      "description": "One color for the whole ✻ Worked for 8s · 14:32 line after each turn. Hex, rgb(), ansi256() or a name. Empty keeps the words in the comment color and the duration and time in the number color.",
+      "default": ""
+    },
     "diffStyle": {
       "type": "string",
       "title": "Diff style",

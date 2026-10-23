@@ -2628,14 +2628,17 @@ export const formatDuration = (ms: number): string => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
 }
 
-export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: string, durationMs: number, time?: string): RenderElement => (
-  <Text color={style.theme.codeComment}>
-    {`✻ ${word} for `}
-    <Text color={style.theme.number}>{formatDuration(durationMs)}</Text>
-    {time === undefined ? null : ' · '}
-    {time === undefined ? null : <Text color={style.theme.number}>{time}</Text>}
-  </Text>
-)
+export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: string, durationMs: number, time?: string): RenderElement => {
+  const value = style.theme.turnDuration ?? style.theme.number
+  return (
+    <Text color={style.theme.turnDuration ?? style.theme.codeComment}>
+      {`✻ ${word} for `}
+      <Text color={value}>{formatDuration(durationMs)}</Text>
+      {time === undefined ? null : ' · '}
+      {time === undefined ? null : <Text color={value}>{time}</Text>}
+    </Text>
+  )
+}
 
 export const pasteLang = (body: string): string => {
   const s = body.trim()
