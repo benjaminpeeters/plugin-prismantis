@@ -468,6 +468,26 @@ test('turnDurationColor draws the whole turn footer in one color', { options: { 
   await ui.unmount()
 })
 
+const levels = { heading1Color: '#FFDD00', heading2Color: '#EE222E', heading3Color: '#fb8215', heading4Color: '#58A6FF' }
+
+for (const headingStyle of ['banner', 'bold'] as const) {
+  test(`heading<N>Color colors each heading level on its own (${headingStyle})`, { options: { ...levels, headingStyle } }, async $ => {
+    const ui = await $.ui.mount({ plugin: 'prismantis', surface: 'terminal', component: 'AssistantMessage', props: { text: '# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five', isFirstOfReply: true }, viewport: { columns: 80, rows: 40 } })
+    expect((await ui.find({ type: 'Text', text: /^One$/ }))?.props.color).toBe('#FFDD00')
+    expect((await ui.find({ type: 'Text', text: /^Two$/ }))?.props.color).toBe('#EE222E')
+    expect((await ui.find({ type: 'Text', text: /^Three$/ }))?.props.color).toBe('#fb8215')
+    expect((await ui.find({ type: 'Text', text: /^Four$/ }))?.props.color).toBe('#58A6FF')
+    expect((await ui.find({ type: 'Text', text: /^Five$/ }))?.props.color).toBe(headingStyle === 'banner' ? t.strong : t.accent)
+    await ui.unmount()
+  })
+}
+
+test('replyBulletColor colors the reply bullet apart from the accent', { options: { replyBulletColor: '#c8c8c8', accentColor: '#ff7a00' } }, async $ => {
+  const ui = await $.ui.mount({ plugin: 'prismantis', surface: 'terminal', component: 'AssistantMessage', props: { text: 'Done.', isFirstOfReply: true }, viewport: { columns: 80, rows: 10 } })
+  expect((await ui.find({ type: 'Text', text: /^●$/ }))?.props.color).toBe('#c8c8c8')
+  await ui.unmount()
+})
+
 test('clock off, or a turn it never saw, leaves the turn footer as it was', async ($, on) => {
   mock.clock(on, { now: local(10, 14, 32) })
   on('turn.complete', async (_$, e) => ({ text: e.answer }))

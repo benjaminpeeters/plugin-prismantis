@@ -9,7 +9,7 @@ import { TERMINALS } from './rtl'
 export const TOKENS = [
   'accent', 'heading', 'strong', 'emphasis', 'inlineCode', 'codeText', 'codeCommand', 'codeFlag', 'codeString', 'codeComment',
   'link', 'path', 'number', 'quote', 'rule', 'tableHeader', 'tableRule', 'bullet', 'diagram', 'diagramText', 'diffAdded', 'diffRemoved',
-  'turnDuration',
+  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
 ] as const
 
 export type Theme = Partial<Record<(typeof TOKENS)[number], string>>
@@ -48,6 +48,7 @@ export type Style = {
   found?: ReadonlySet<string>
   diagramHints: boolean
   issueHint: boolean
+  handoff: boolean
   rtl: 'auto' | Terminal | 'off'
   reorder: boolean
   shape: Shape
@@ -104,6 +105,7 @@ export const resolveStyle = (options: PluginOptions): Style => {
     pathLinks: false,
     diagramHints: options.diagramHints !== false && options.mermaid !== false,
     issueHint: options.issueHint !== false,
+    handoff: options.handoff !== false,
     rtl,
     reorder: rtl !== 'auto' && rtl !== 'off',
     shape: rtl === 'auto' || rtl === 'off' ? 'visual' : TERMINALS[rtl],

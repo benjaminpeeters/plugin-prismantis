@@ -9,6 +9,7 @@ import { nestedBlocks, parse } from './markdown'
 import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { FIGURE_HINT } from './figure'
+import { drawHandoff, handoffLast, isHandoffLang } from './handoff'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
 import { MARK, bashEdits, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
@@ -353,6 +354,11 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
     ) : null
   }
   const drawn = drawDiagrams(el, style, blocks, columns - markerRoom(style))
+  if (style.handoff) {
+    for (const [i, block] of blocks.entries()) {
+      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, copy, `b${i}`) })
+    }
+  }
   const Image = 'Image' in el ? el.Image : null
   if (Image) {
     for (const [i, formula] of math) {
@@ -589,7 +595,10 @@ export const register: Register = (on, options) => {
   const firstTheme = pickTheme(options.theme)
   const style = resolveStyle({ ...options, theme: firstTheme })
   const parsed = new Map<string, ReturnType<typeof parse>>()
-  const parseCached = (text: string, cache = parsed, limit?: number) => remember(cache, text, () => parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths }), limit)
+  const parseCached = (text: string, cache = parsed, limit?: number) => remember(cache, text, () => {
+    const blocks = parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths })
+    return style.handoff ? handoffLast(blocks) : blocks
+  }, limit)
   const shared = new Map<string, ReturnType<typeof parse>>()
   let terminal: Terminal | null = null
   const fit = (viewport?: { isFullscreen?: boolean }): Style => (terminal === 'apple-terminal' && viewport?.isFullscreen ? { ...style, shape: 'inverse' } : style)
@@ -825,7 +834,7 @@ export const register: Register = (on, options) => {
     return (
       <Box key="msg" flexDirection="row">
         <Box width={2} flexShrink={0}>
-          <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
+          <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
           {drawMarkdown($, el, narration ? { ...surfaceStyle, narration } : surfaceStyle, blocks, columnsOf(e.viewport), math, pictures, reply, open, { id: e.requestId, press: reach.marks })}

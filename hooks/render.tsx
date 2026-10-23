@@ -1,5 +1,6 @@
 import type { ElementTable, RenderElement, RenderNode, TextHoverProps } from 'claude-code'
 
+import { isHandoffLang } from './handoff'
 import { tableHtml, tableText } from './html'
 import type { Block, Inline } from './markdown'
 import { mathOf } from './latex'
@@ -917,9 +918,16 @@ const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { k
   return rtl.base === 'R' && !mirrored(style) ? <el.Box key={key} alignSelf="flex-end">{heading}</el.Box> : heading
 }
 
+const LEVEL_TOKENS = ['heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6'] as const
+
+// A heading<N> color set for the level wins; unset, H1 and H2 take heading and H3+ accent.
+const levelColor = (t: Theme, level: number): string | undefined => t[LEVEL_TOKENS[level - 1]!]
+const headingColor = (t: Theme, level: number): string | undefined =>
+  levelColor(t, level) ?? (level <= 2 ? t.heading : t.accent ?? t.heading)
+
 const mirroredBanner = (el: ElementTable, style: Style, level: number, inline: Inline[], key: string) => {
   const { Box, Text } = el
-  const color = style.theme.heading
+  const color = headingColor(style.theme, level)
   const text = <Text key={`${key}.h`} bold underline={level === 2} color={color}>{level === 1 ? `${WALL} ` : ''}{renderInline(el, style, inline, key)}{level === 1 ? ` ${WALL}` : ''}</Text>
   if (level === 2) return text
   const edge = (k: string) => <Text key={k} color={color}>{WALL + '━'.repeat(width(inlineText(inline)) + 2) + WALL}</Text>
@@ -931,7 +939,7 @@ const HEADING_RULE = 200
 const drawHeading = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'heading' }>, inline: Inline[], key: string) => {
   const { Box, Text } = el
   const t = style.theme
-  const color = block.level <= 2 ? t.heading : t.accent ?? t.heading
+  const color = headingColor(t, block.level)
   const label = inlineText(inline)
   switch (style.headingStyle) {
     case 'uppercase':
@@ -942,7 +950,7 @@ const drawHeading = (el: ElementTable, style: Style, block: Extract<Block, { kin
       if (block.level === 1) return <Box key={key} alignSelf="flex-start" borderStyle="bold" borderColor={color} paddingX={1}><Text bold color={color}>{renderInline(el, style, inline, key)}</Text></Box>
       return block.level === 2
         ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text>{style.gridFace ? <Box flexDirection="row"><Box width={0} flexGrow={1} height={1} overflow="hidden"><Text color={color}>{'━'.repeat(HEADING_RULE)}</Text></Box></Box> : <Text color={color}>{'━'.repeat(width(label))}</Text>}</Box>
-        : <Text key={key} bold color={block.level === 3 ? color : t.strong}>{renderInline(el, style, inline, key)}</Text>
+        : <Text key={key} bold color={block.level === 3 || levelColor(t, block.level) ? color : t.strong}>{renderInline(el, style, inline, key)}</Text>
     default:
       return <Text key={key} bold color={color}>{renderInline(el, style, inline, key)}</Text>
   }
@@ -1226,8 +1234,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   const buttons = blocks.map((block, b) => {
     const text = hover && holdsOnlyEmptyCode(block) ? undefined : copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
+    const isHandoffCard = block.kind === 'code' && isHandoffLang(block.lang) && !!drawn.get(b)?.element
     const art = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tableArt(block) : undefined)
-    const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
+    const first = text === undefined || isPlainCode || isHandoffCard ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
     const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
     return { first, second, html }

@@ -94,6 +94,19 @@ Each edit draws as a diff card headed \`+N −M\`: code highlighted in the file'
 
 A file Write creates shows its first 10 lines as numbered code in the theme's colors with no diff marks, and a click on it or on \`+K more lines\` opens the rest. A file an Edit or a shell command creates shows its first 10 lines as added lines under \`Created\`. A file a shell command removes is one \`Deleted\` line that opens to its removed lines on a click, and a file moved unchanged is one \`Renamed old → new\` line.
 
+### Hand-off blocks
+
+What Claude hands you to run goes in a \`handoff\` block: \`CLAUDE:\` for the Claude Code prompt, \`CMD:\` for a terminal. All of a reply's hand-offs draw as one card at its end, Claude Code inputs first, each with its own copy button; a malformed entry gets a red line. Turn it off with \`handoff\` in \`/config\`.
+
+\`\`\`handoff
+CMD: sudo apt install gum
+  # installs gum system-wide
+  # expect: gum --version prints a version
+
+CLAUDE: /reload-plugins
+  # loads the plugins changed on disk
+\`\`\`
+
 ### Quotes and rules
 
 > A quote keeps its text when you copy it, without the \`> \` markers.

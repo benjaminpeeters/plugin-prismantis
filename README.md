@@ -250,6 +250,25 @@ Collapsed groups draw one line too: `Ran 3 commands, read 2 files · last: npm t
 
 The line that closes a turn keeps Claude Code's word and colors the duration: `✻ Baked for 6m 20s`. Terminal only, since that's the only surface that draws it.
 
+### Hand-off blocks
+
+Fork addition. When Claude needs you to run something yourself, it writes a ` ```handoff ` block:
+
+````
+```handoff
+CLAUDE: /add-dir ~/repo/foo
+  # makes foo writable for this session
+  # expect: "Added ~/repo/foo"
+
+CMD: |
+    cd ~/x
+    make install
+  # builds and installs x
+```
+````
+
+`CLAUDE:` is typed into the Claude Code prompt, `CMD:` into a terminal; `CMD: |` takes the next lines indented 4 spaces as one command. Each entry's explanation follows as `#` lines indented 2 spaces, `# expect:` naming the outcome. Every hand-off block of a reply draws as one card after its last other block, Claude Code inputs first, each entry with its own copy button (shown even with `copyButtonStyle: hover`). A malformed entry is never dropped: an unknown key, a slash command keyed `CMD:`, an entry without explanation or a stray line each get a red `✗ handoff:` line under the card. `handoff: false` leaves the blocks as plain code where they were written. Claude learns the format from a session note (plugin-display-hint), not from this plugin.
+
 ### Slash commands
 
 Output from slash commands, built-in or from other plugins, is drawn like a reply, copy buttons included. Errors keep Claude Code's own red line.
@@ -388,6 +407,8 @@ A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name
 | `diffAdded` | added diff lines: their tint, `+` marks and count (the theme's own green) |
 | `diffRemoved` | removed diff lines: their tint, `−` marks and count (the theme's own red) |
 | `turnDuration` | the whole `✻ Worked for 8s · 14:32` line (unset: words in `codeComment`, duration and time in `number`) |
+| `replyBullet` | the `●` before each reply (unset: `accent`) |
+| `heading1` … `heading6` | one heading level each (unset: `heading` for H1 and H2, `accent` for H3+) |
 
 ## Troubleshooting
 

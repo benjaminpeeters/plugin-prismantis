@@ -287,6 +287,48 @@
       "description": "Color for removed diff lines: their - marks and count, and in hex the tint behind them, mixed into black or white so code text stays at 4.5:1. Hex, rgb(), ansi256() or a name. Empty uses the theme's red.",
       "default": ""
     },
+    "replyBulletColor": {
+      "type": "string",
+      "title": "Reply bullet",
+      "description": "Color for the ● before each reply. Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
+      "default": ""
+    },
+    "heading1Color": {
+      "type": "string",
+      "title": "H1",
+      "description": "Color for H1 headings only. Hex, rgb(), ansi256() or a name. Empty uses the heading color.",
+      "default": ""
+    },
+    "heading2Color": {
+      "type": "string",
+      "title": "H2",
+      "description": "Color for H2 headings only. Hex, rgb(), ansi256() or a name. Empty uses the heading color.",
+      "default": ""
+    },
+    "heading3Color": {
+      "type": "string",
+      "title": "H3",
+      "description": "Color for H3 headings only. Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
+      "default": ""
+    },
+    "heading4Color": {
+      "type": "string",
+      "title": "H4",
+      "description": "Color for H4 headings only. Hex, rgb(), ansi256() or a name. Empty uses the accent color (the bold text color in the banner style).",
+      "default": ""
+    },
+    "heading5Color": {
+      "type": "string",
+      "title": "H5",
+      "description": "Color for H5 headings only. Hex, rgb(), ansi256() or a name. Empty uses the accent color (the bold text color in the banner style).",
+      "default": ""
+    },
+    "heading6Color": {
+      "type": "string",
+      "title": "H6",
+      "description": "Color for H6 headings only. Hex, rgb(), ansi256() or a name. Empty uses the accent color (the bold text color in the banner style).",
+      "default": ""
+    },
     "turnDurationColor": {
       "type": "string",
       "title": "Turn footer",
@@ -330,6 +372,12 @@
       "type": "boolean",
       "title": "Issue hint",
       "description": "On your first prompt and every tenth after it, tell the model it can offer, after asking you, to open a minimal repro issue on prismantis when you say something drew wrong. About 35 tokens each time.",
+      "default": true
+    },
+    "handoff": {
+      "type": "boolean",
+      "title": "Hand-off blocks",
+      "description": "Draw ```handoff blocks (CLAUDE: and CMD: entries Claude hands you to run) as one card at the end of the reply, Claude Code inputs first, each with a copy button, and a red line for every malformed entry. Off leaves them as code.",
       "default": true
     },
     "diagramHints": {
