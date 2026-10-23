@@ -1,0 +1,5 @@
+# Fork-only: the marketplace is named plugin-prismantis and installs the plugin from
+# this clone (source "."), so keep this file when merging upstream, whose release
+# commits re-pin it to a GitHub tag.
+# Needs `git config merge.ours.driver true` in the clone (clone_repos.sh sets it).
+.claude-plugin/marketplace.json merge=ours

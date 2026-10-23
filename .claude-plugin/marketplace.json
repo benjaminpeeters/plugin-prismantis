@@ -1,5 +1,5 @@
 {
-  "name": "prismantis",
+  "name": "plugin-prismantis",
   "owner": {
     "name": "Nahum Litvin",
     "url": "https://github.com/NahumLitvin"
@@ -8,7 +8,7 @@
     {
       "name": "prismantis",
       "description": "Colorful, themeable rendering for Claude Code replies: tables, headings, code, numbers, paths and links.",
-      "source": { "source": "github", "repo": "NahumLitvin/prismantis", "ref": "v0.35.2", "sha": "45c25e88303814d810b7396dd3d8036b97b01ca6" },
+      "source": ".",
       "version": "0.35.2",
       "category": "appearance",
       "tags": [
