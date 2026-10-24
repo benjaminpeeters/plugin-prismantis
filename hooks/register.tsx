@@ -661,8 +661,10 @@ export const register: Register = (on, options) => {
         const toggle = file && style.diffToggle === 'row' && style.diffFold !== 'none'
           ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', style.diffFold === 'open' ? { label: 'hide diff', close: 'show diff', whole: true } : { label: 'show diff', close: 'hide diff', whole: true })
           : null
-        const around = toggle?.around ? (text: RenderElement) => <el.Box key="rowtoggle">{toggle.around!(text, { inverse: false })}</el.Box> : undefined
-        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, around)
+        // The row brightens under the pointer, as Claude Code's own clickable rows do: one hover group per row.
+        const lit = { scope: `row:${instanceKey(e.props.tool_use_id)}`, dimColor: false }
+        const row = toggle?.around ? { around: (text: RenderElement) => toggle.around!(text, { inverse: false, ...lit }), lit } : undefined
+        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, row)
       }
       const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
       return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns) : next(e)

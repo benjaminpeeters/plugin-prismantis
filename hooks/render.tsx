@@ -1956,7 +1956,8 @@ const cardFrame = (style: Style, background: string | undefined) => (style.diffS
 })
 
 // diffFold: the whole card is the toggle, a click anywhere on it folds it to its head or opens it;
-// `open` cards start shown, `folded` ones as the head alone. Null when diffFold is none.
+// `open` cards start shown, `folded` ones as the head alone. Null when diffFold is none. The card
+// keeps its ground under the pointer; only a toggling row (diffToggle row) lights up.
 const cardFold = (style: Style, fold: Fold, id: string, key: string): { open: boolean; around: (body: RenderElement) => RenderElement } | null => {
   if (style.diffFold === 'none') return null
   const toggle = fold?.(`card:${id}`, 0, `cardfold${key}`, style.diffFold === 'open' ? { label: 'hide', close: 'show', whole: true } : { label: 'show', close: 'hide', whole: true })
@@ -2301,8 +2302,12 @@ const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: num
   ))
 }
 
-// `around` (diffToggle: row) makes the row's text the toggle of its file's diff card.
-export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns = 100, around?: (text: RenderElement) => RenderElement): RenderElement => {
+export type RowToggle = { around: (text: RenderElement) => RenderElement; lit: TextHoverProps }
+
+// `toggle` (diffToggle: row) makes the row's text the toggle of its file's diff card; `lit` is the
+// hover group every piece of the row joins, so the whole row brightens under the pointer (a
+// Button's own hover reaches only its label, not the Texts drawn inside it).
+export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns = 100, toggle?: RowToggle): RenderElement => {
   if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns)
   const { Text } = el
   const t = style.theme
@@ -2316,29 +2321,31 @@ export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, colu
   const counts = stats ? ` +${stats.added} −${stats.removed}` : ''
 
   const label = `${verb}${target === undefined ? "" : ` ${target}`}${counts}${row.isInterrupted ? " interrupted" : row.isErrored ? " failed" : ""}`
+  const lit = toggle ? { hover: toggle.lit } : {}
   const text = (
-      <Text wrap="truncate-end" dimColor={toolDim(style)}>
-        <Text bold={!toolDim(style)} dimColor={toolDim(style)}>{verb}</Text>
-        {target === undefined ? null : <Text> </Text>}
-        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)}>{drawPieces(el, style, [{ text: target, path: toolPath(row.tool, found.path) }])}</Text>}
-        {row.isInterrupted ? <Text dimColor> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag}> failed</Text> : null}
+      <Text wrap="truncate-end" dimColor={toolDim(style)} {...lit}>
+        <Text bold={!toolDim(style)} dimColor={toolDim(style)} {...lit}>{verb}</Text>
+        {target === undefined ? null : <Text {...lit}> </Text>}
+        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...lit}>{drawPieces(el, style, [{ text: target, path: toolPath(row.tool, found.path) }])}</Text>}
+        {row.isInterrupted ? <Text dimColor {...lit}> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag} {...lit}> failed</Text> : null}
       </Text>
   )
-  return toolLayout(el, style, columns, label, dot, row.isRunning, around ? around(text) : text)
+  return toolLayout(el, style, columns, label, dot, row.isRunning, toggle ? toggle.around(text) : text)
 }
 
 // editRow: file: the folder dim, the file name in the path color, then the diff's +N −M.
-const fileTarget = ({ Text }: ElementTable, style: Style, target: string, stats: FileStats): RenderElement => {
+const fileTarget = ({ Text }: ElementTable, style: Style, target: string, stats: FileStats, hover?: TextHoverProps): RenderElement => {
   const cut = target.lastIndexOf('/') + 1
   const marks = markColors(style.theme)
+  const lit = hover ? { hover } : {}
   return (
-    <Text>
-      {cut > 0 ? <Text dimColor>{target.slice(0, cut)}</Text> : null}
-      <Text bold color={style.theme.path}>{target.slice(cut)}</Text>
-      <Text> </Text>
-      <Text color={marks['+']} dimColor={stats.added === 0}>{`+${stats.added}`}</Text>
-      <Text> </Text>
-      <Text color={marks['-']} dimColor={stats.removed === 0}>{`−${stats.removed}`}</Text>
+    <Text {...lit}>
+      {cut > 0 ? <Text dimColor {...lit}>{target.slice(0, cut)}</Text> : null}
+      <Text bold color={style.theme.path} {...lit}>{target.slice(cut)}</Text>
+      <Text {...lit}> </Text>
+      <Text color={marks['+']} dimColor={stats.added === 0} {...lit}>{`+${stats.added}`}</Text>
+      <Text {...lit}> </Text>
+      <Text color={marks['-']} dimColor={stats.removed === 0} {...lit}>{`−${stats.removed}`}</Text>
     </Text>
   )
 }
