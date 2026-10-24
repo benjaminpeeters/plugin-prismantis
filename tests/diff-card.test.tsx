@@ -117,6 +117,34 @@ test('diffToggle row: the Edit row toggles its card, which draws nothing while f
   await row.unmount()
 })
 
+const failedResult = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolResult' as const, props: { tool_use_id: 'f-1', tool: 'Edit', output: 'Error: File content has changed since it was last read.', isErrored: true }, viewport: { columns: 100, rows: 40 } }
+const failedRow = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolUse' as const, props: { tool_use_id: 'f-1', tool: 'Edit', input: { file_path: '/home/demo/app/src/app.ts' }, output: 'Error: File content has changed since it was last read.', isRunning: false, isErrored: true, isInterrupted: false }, viewport: { columns: 100, rows: 40 } }
+
+test('editErrors folded hides a failed edit\'s error behind its row until the row is clicked', { options: { diffToggle: 'row', diffFold: 'folded', editErrors: 'folded' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const engineShown = async () => {
+    const ui = await $.ui.mount(failedResult)
+    const shown = !!(await ui.find({ type: 'Text', text: /^engine$/ }))
+    await ui.unmount()
+    return shown
+  }
+  expect(await engineShown()).toBe(false)
+  const row = await $.ui.mount(failedRow)
+  expect(await row.find({ type: 'Text', text: / failed$/ })).toBeTruthy()
+  await row.press({ key: 'rowfold.rows' })
+  expect(await engineShown()).toBe(true)
+  await row.unmount()
+})
+
+test('editErrors shown, the default, prints a failed edit\'s error as before', { options: { diffToggle: 'row', diffFold: 'folded' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount(failedResult)
+  expect(await ui.find({ type: 'Text', text: /^engine$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('createdStyle preview, the default, keeps the created file as it was', async ($, on) => {
   engine(on)
   inApp(on)

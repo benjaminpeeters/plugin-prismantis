@@ -368,12 +368,31 @@
       "description": "How strongly the changed words stand out from their line (fork): the percent of the diff color laid over the line's tint, 0 to 90. Empty keeps 30.",
       "default": ""
     },
+    "proseCap": {
+      "type": "boolean",
+      "title": "Cap prose width",
+      "description": "Wrap paragraphs, lists, quotes and alerts at proseWidth columns, a comfortable reading measure, however wide the window (fork). Headings, code, tables, diagrams, figures and cards keep the whole width.",
+      "default": false
+    },
+    "proseWidth": {
+      "type": "string",
+      "title": "Prose width",
+      "description": "The column at which capped prose wraps, a whole number from 40 to 200 (fork). Required while proseCap is on: a missing or invalid value stops prismantis loading, with this option named. 65 to 80 is the classic comfortable measure.",
+      "default": "90"
+    },
     "diffToggle": {
       "type": "string",
       "title": "Diff toggle",
       "description": "card: a click on a diff card folds or opens it. row (fork): a click on the Edit or Write row ('Edited path ●') does it instead; a folded card is then not drawn at all and an open one shows only its lines, the row being its head. Needs diffFold open or folded; cards of shell edits keep their own toggle.",
       "default": "card",
       "options": ["card", "row"]
+    },
+    "editErrors": {
+      "type": "string",
+      "title": "Failed edit errors",
+      "description": "shown: a failed Edit or Write prints its error under its row. folded (fork, with diffToggle row): the error sits behind the row like a diff card, opened by a click on the row, whose ' failed' already tells; diffFold sets whether it starts open.",
+      "default": "shown",
+      "options": ["shown", "folded"]
     },
     "editRow": {
       "type": "string",

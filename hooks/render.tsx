@@ -1262,17 +1262,22 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   }
   const room = (b: number) => (hover && buttons[b]!.first ? columns - MARK : columns)
   const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved([buttons[b]!.first]) - 2)
+  // proseCap: paragraphs, lists, quotes and alerts wrap at proseWidth columns, the comfortable
+  // reading measure; headings, code, tables, diagrams and cards keep the whole width.
+  const prose = style.proseCap ? Math.min(columns, style.proseWidth) : columns
+  const narrow = (element: RenderElement, key: string): RenderElement =>
+    prose < columns ? <Box key={`${key}.measure`} width={prose} flexShrink={1} flexDirection="column">{element}</Box> : element
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
     switch (block.kind) {
       case 'heading':
         return renderHeading(el, style, block, key)
       case 'paragraph':
-        return drawn.get(b)?.element ?? renderParagraph(el, style, block, columns, key, tip)
+        return drawn.get(b)?.element ?? narrow(renderParagraph(el, style, block, prose, key, tip), key)
       case 'quote':
-        return renderQuote(el, style, block, beside(b), key, copy, fold, tip)
+        return narrow(renderQuote(el, style, block, Math.min(beside(b), prose), key, copy, fold, tip), key)
       case 'alert':
-        return renderAlert(el, style, block, beside(b), key, copy, fold, tip)
+        return narrow(renderAlert(el, style, block, Math.min(beside(b), prose), key, copy, fold, tip), key)
       case 'rule':
         return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
       case 'code': {
@@ -1303,7 +1308,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return renderList(el, style, block, room(b), key, copy, fold, tip)
+        return narrow(renderList(el, style, block, Math.min(room(b), prose), key, copy, fold, tip), key)
       case 'table':
         return renderTable(el, style, block, room(b), key, rtlTables[b]!, tip)
       case 'notes':

@@ -38,6 +38,9 @@ export type Style = {
   diffPath: boolean
   createdStyle: 'preview' | 'card'
   diffToggle: 'card' | 'row'
+  editErrors: 'shown' | 'folded'
+  proseCap: boolean
+  proseWidth: number
   editRow: 'path' | 'file'
   diffBorder: boolean
   pieStyle: 'round' | 'bars'
@@ -86,7 +89,16 @@ const tintShare = (value: unknown, max: number): number | undefined => {
   return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : undefined
 }
 
-export const pickTheme =(value: unknown, random = Math.random): string => {
+// proseWidth is required with proseCap on: a whole number of columns, 40 to 200.
+const proseColumns = (value: unknown): number => {
+  const n = typeof value === 'string' ? Number(value) : value
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 40 || n > 200) {
+    throw new Error(`prismantis: proseCap is on, so proseWidth must be a whole number of columns from 40 to 200, not ${JSON.stringify(value)}; set it in /config`)
+  }
+  return n
+}
+
+export const pickTheme = (value: unknown, random = Math.random): string => {
   const name = value === 'random' ? RANDOM_THEMES[Math.floor(random() * RANDOM_THEMES.length)] : value
   return (PRESET_NAMES as readonly unknown[]).includes(name) ? String(name) : 'catppuccin-mocha'
 }
@@ -119,6 +131,9 @@ export const resolveStyle = (options: PluginOptions): Style => {
     diffBorder: options.diffBorder !== false,
     createdStyle: pick(options.createdStyle, ['preview', 'card'] as const, 'preview'),
     diffToggle: pick(options.diffToggle, ['card', 'row'] as const, 'card'),
+    editErrors: pick(options.editErrors, ['shown', 'folded'] as const, 'shown'),
+    proseCap: options.proseCap === true,
+    proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : 0,
     editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,
