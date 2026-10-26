@@ -66,6 +66,7 @@ export type Style = {
   handoff: boolean
   drafts: boolean
   copyIcon: string
+  runIcon: string
   turnWord: string
   rtl: 'auto' | Terminal | 'off'
   reorder: boolean
@@ -155,6 +156,7 @@ export const resolveStyle = (options: PluginOptions): Style => {
     handoff: options.handoff !== false,
     drafts: options.drafts !== false,
     copyIcon: typeof options.copyIcon === 'string' && options.copyIcon.trim() ? options.copyIcon.trim() : '⧉',
+    runIcon: typeof options.runIcon === 'string' && options.runIcon.trim() ? options.runIcon.trim() : '▷',
     turnWord: typeof options.turnWord === 'string' ? options.turnWord.trim() : '',
     rtl,
     reorder: rtl !== 'auto' && rtl !== 'off',

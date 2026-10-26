@@ -494,6 +494,12 @@
       "description": "The glyph of a copy marker: on hand-off and draft cards, beside the turn footer, and on hover markers. A marker with one action copies on click; one with several opens them. One terminal cell wide, e.g. a Nerd Font icon such as . Empty uses ⧉.",
       "default": ""
     },
+    "runIcon": {
+      "type": "string",
+      "title": "Run icon",
+      "description": "The glyph of the run mark a hand-off card puts on a slash command entry, before its copy icon. One terminal cell wide, e.g. a Nerd Font icon. Empty uses ▷.",
+      "default": ""
+    },
     "turnWord": {
       "type": "string",
       "title": "Turn footer word",

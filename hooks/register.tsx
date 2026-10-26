@@ -13,7 +13,7 @@ import type { DiffPalette } from './diff-palettes'
 import { DIFF_PALETTES, DIFFS_TEXT, paletteOptions } from './diff-palettes'
 import { drawDraft, isDraftLang } from './draft'
 import type { RunButton, SlashCommand } from './handoff'
-import { RUN_GLYPH, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
+import { cardGlyph, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
 import type { TurnMarks, TurnRole } from '../types'
 import { markTurns, roleOf } from './turns'
 import { drawDiagrams } from './mermaid'
@@ -92,11 +92,11 @@ const firstDrawn = async ($: EngineInterface, id: string): Promise<number> => {
   return now
 }
 
-const runButton = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, slash: SlashCommand, line: string, key: string): RenderElement => {
+const runButton = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, glyph: string, slash: SlashCommand, line: string, key: string): RenderElement => {
   const press = async () => {
     await $.command.run(slash).catch((err: unknown) => $.ui.toast(`Could not run ${line}: ${err instanceof Error ? err.message : String(err)}`))
   }
-  return glyphButton(el, RUN_GLYPH, <el.Button key={key} variant="primary" label={`run ${line}`} onPress={press} />, key)
+  return glyphButton(el, cardGlyph(glyph), <el.Button key={key} variant="primary" label={`run ${line}`} onPress={press} />, key)
 }
 
 const marksTurns = (style: Style): boolean => style.answerMark || style.stepMark
@@ -405,9 +405,9 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
   }
   const icon = (text: string | (() => string), key: string, label = 'copy') => {
     const button = copy(text, key, label)
-    return button ? iconButton(el, style, button, key) : null
+    return button ? glyphButton(el, cardGlyph(style.copyIcon), button, key) : null
   }
-  const run: RunButton = (slash, line, key) => runButton($, el, slash, line, key)
+  const run: RunButton = (slash, line, key) => runButton($, el, style.runIcon, slash, line, key)
   const drawn = drawDiagrams(el, style, blocks, columns - markerRoom(style))
   if (style.handoff) {
     for (const [i, block] of blocks.entries()) {

@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { HANDOFF_FORMAT, handoffLast, parseHandoff } from '../hooks/handoff'
 import { parse } from '../hooks/markdown'
+import { labelled } from './buttons'
 import { recordCopies, recordToasts } from './clipboard-env'
 
 const hl = { numbers: false, paths: false }
@@ -107,7 +108,7 @@ test('a reply draws one hand-off card at its end, Claude Code inputs first, each
   expect(texts.some(text => /✗ handoff/.test(text ?? ''))).toBe(false)
   const icons = (await ui.findAll({ type: 'Button' })).filter(button => button.props.label === 'copy')
   expect(icons).toHaveLength(3)
-  expect(icons.every(button => button.props.plain && button.text === '')).toBe(true)
+  expect(icons.every(button => button.props.plain && button.text === '  ')).toBe(true)
   expect((await ui.findAll({ type: 'Button' })).map(button => button.props.label)).not.toContain('⧉ source')
   await ui.press({ key: 'b1.copy0' })
   await ui.press({ key: 'b1.copy1' })
@@ -125,9 +126,16 @@ test('a slash command entry has a run mark that runs it in the session; a termin
   const ui = await $.ui.mount({ ...mount(), props: { text, isFirstOfReply: true } })
   const marks = (await ui.findAll({ type: 'Button' })).filter(button => String(button.props.label).startsWith('run '))
   expect(marks.map(button => button.props.label)).toEqual(['run /plugin marketplace remove claude-plugin-meta'])
-  expect(marks[0]!.text).toBe('▷')
+  expect(marks[0]!.text).toBe(' ▷ ')
   await ui.press({ key: 'b0.run0' })
   expect(ran).toEqual([{ command: 'plugin', args: 'marketplace remove claude-plugin-meta' }])
+  await ui.unmount()
+})
+
+test('runIcon replaces the run mark\'s glyph, padded to three cells like the copy icon', { options: { runIcon: '»' } }, async $ => {
+  const text = '```handoff\nCLAUDE: /reload-plugins\n  # reloads the plugins\n```'
+  const ui = await $.ui.mount({ ...mount(), props: { text, isFirstOfReply: true } })
+  expect((await labelled(ui, 'run /reload-plugins'))?.text).toBe(' » ')
   await ui.unmount()
 })
 

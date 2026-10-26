@@ -32,7 +32,8 @@ const SLASH = /^\/([\w:-]+)(?:\s+([\s\S]*))?$/
 
 export const isHandoffLang = (lang: string): boolean => lang.toLowerCase() === 'handoff'
 
-export const RUN_GLYPH = '▷'
+// A card's icons are padded so each click target is three cells wide, not one.
+export const cardGlyph = (glyph: string): string => ` ${glyph} `
 
 const slashCommand = (e: HandoffEntry): SlashCommand | undefined => {
   const match = e.key === 'CLAUDE' && !e.command.includes('\n') ? SLASH.exec(e.command) : null
@@ -110,7 +111,8 @@ const drawHandoff = ({ Box, Text }: ElementTable, style: Style, { entries }: Ext
   const t = style.theme
   const ordered = [...entries.filter(e => e.key === 'CLAUDE'), ...entries.filter(e => e.key === 'CMD')]
   const color = (e: HandoffEntry) => (e.key === 'CLAUDE' ? t.link : t.codeCommand)
-  const button = (copy ? width(style.copyIcon) + 2 : 0) + (ordered.some(slashCommand) ? width(RUN_GLYPH) + 1 : 0)
+  const glyphs = (copy ? cardGlyph(style.copyIcon) : '') + (ordered.some(slashCommand) ? cardGlyph(style.runIcon) : '')
+  const button = glyphs ? 2 + width(glyphs) : 0
   const longest = Math.max(0, ...ordered.flatMap(e => [...e.command.split('\n'), ...e.notes].map(width)))
   const natural = FRAME + BADGE_WIDTH + GAPS + longest + button
   return (
@@ -125,7 +127,7 @@ const drawHandoff = ({ Box, Text }: ElementTable, style: Style, { entries }: Ext
                 {e.command.split('\n').map((row, r) => <Text key={`c${r}`} color={t.codeText} wrap="wrap">{row}</Text>)}
                 {e.notes.map((note, n) => <Text key={`n${n}`} color={isExpect(note) ? t.number : t.codeComment} wrap="wrap">{note}</Text>)}
               </Box>
-              <Box flexShrink={0} flexDirection="row" columnGap={1}>
+              <Box flexShrink={0} flexDirection="row">
                 {slash ? run(slash, e.command, `${key}.run${i}`) : null}
                 {copy ? copy(e.command, `${key}.copy${i}`) : null}
               </Box>
