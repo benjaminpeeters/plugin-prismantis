@@ -117,8 +117,9 @@ test('diffToggle row: the Edit row toggles its card, which draws nothing while f
   await row.unmount()
 })
 
-const failedResult = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolResult' as const, props: { tool_use_id: 'f-1', tool: 'Edit', output: 'Error: File content has changed since it was last read.', isErrored: true }, viewport: { columns: 100, rows: 40 } }
-const failedRow = { plugin: 'prismantis', surface: 'terminal' as const, component: 'ToolUse' as const, props: { tool_use_id: 'f-1', tool: 'Edit', input: { file_path: '/home/demo/app/src/app.ts' }, output: 'Error: File content has changed since it was last read.', isRunning: false, isErrored: true, isInterrupted: false }, viewport: { columns: 100, rows: 40 } }
+const FAILED = 'Error: File content has changed since it was last read.'
+const failedResult = { ...edit, props: { ...edit.props, tool_use_id: 'f-1', output: FAILED, isErrored: true } }
+const failedRow = { ...editRow, props: { ...editRow.props, tool_use_id: 'f-1', output: FAILED, isErrored: true } }
 
 test('editErrors folded hides a failed edit\'s error behind its row until the row is clicked', { options: { diffToggle: 'row', diffFold: 'folded', editErrors: 'folded' } }, async ($, on) => {
   engine(on)
@@ -132,9 +133,18 @@ test('editErrors folded hides a failed edit\'s error behind its row until the ro
   expect(await engineShown()).toBe(false)
   const row = await $.ui.mount(failedRow)
   expect(await row.find({ type: 'Text', text: / failed$/ })).toBeTruthy()
+  expect((await row.findAll({ type: 'Button' })).map(button => button.props.label)).toContain('show error')
   await row.press({ key: 'rowfold.rows' })
   expect(await engineShown()).toBe(true)
   await row.unmount()
+})
+
+test('editErrors folded leaves the error shown under toolOutput quiet, whose row cannot open it', { options: { diffToggle: 'row', diffFold: 'folded', editErrors: 'folded', toolOutput: 'quiet' } }, async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount(failedResult)
+  expect(await ui.find({ type: 'Text', text: /File content has changed/ })).toBeTruthy()
+  await ui.unmount()
 })
 
 test('editErrors shown, the default, prints a failed edit\'s error as before', { options: { diffToggle: 'row', diffFold: 'folded' } }, async ($, on) => {

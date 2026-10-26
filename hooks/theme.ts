@@ -42,8 +42,7 @@ export type Style = {
   answerMark: boolean
   stepMark: boolean
   dimProse?: true
-  proseCap: boolean
-  proseWidth: number
+  proseWidth: number | null
   editRow: 'path' | 'file'
   diffBorder: boolean
   pieStyle: 'round' | 'bars'
@@ -92,7 +91,6 @@ const tintShare = (value: unknown, max: number): number | undefined => {
   return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : undefined
 }
 
-// proseWidth is required with proseCap on: a whole number of columns, 40 to 200.
 const proseColumns = (value: unknown): number => {
   const n = typeof value === 'string' ? Number(value) : value
   if (typeof n !== 'number' || !Number.isInteger(n) || n < 40 || n > 200) {
@@ -137,8 +135,7 @@ export const resolveStyle = (options: PluginOptions): Style => {
     editErrors: pick(options.editErrors, ['shown', 'folded'] as const, 'shown'),
     answerMark: options.answerMark === true,
     stepMark: options.stepMark === true,
-    proseCap: options.proseCap === true,
-    proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : 0,
+    proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : null,
     editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,

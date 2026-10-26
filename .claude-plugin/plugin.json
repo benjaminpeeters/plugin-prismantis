@@ -402,7 +402,7 @@
     "editErrors": {
       "type": "string",
       "title": "Failed edit errors",
-      "description": "shown: a failed Edit or Write prints its error under its row. folded (fork, with diffToggle row): the error sits behind the row like a diff card, opened by a click on the row, whose ' failed' already tells; diffFold sets whether it starts open.",
+      "description": "shown: a failed Edit or Write prints its error under its row. folded (fork, with diffToggle row, a diffFold other than none and toolOutput not quiet): the error sits behind the row like a diff card, opened by a click on the row, whose ' failed' already tells; diffFold sets whether it starts open.",
       "default": "shown",
       "options": ["shown", "folded"]
     },

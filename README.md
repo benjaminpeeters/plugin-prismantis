@@ -408,13 +408,13 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `diffTint` | percent of the diff color in a changed line's background, 0 to 60; 0 tints only the changed words (fork) | 30 dark, 20 light |
 | `diffWordTint` | percent of the diff color laid over a changed word's line tint, 0 to 90 (fork) | 30 |
 | `diffBorder` | `true`, `false`: the card's border; with `diffBackgroundColor` gives border, fill, both or neither (fork) | `true` |
-| `proseCap` | `true`, `false`: wrap paragraphs, lists, quotes and alerts at `proseWidth`; headings, code, tables, diagrams and cards keep the whole width (fork) | `false` |
+| `proseCap` | `true`, `false`: wrap paragraphs, lists, quotes and alerts at `proseWidth`; headings, code, tables, diagrams, figures and cards keep the whole width (fork) | `false` |
 | `proseWidth` | columns, a whole number from 40 to 200; required while `proseCap` is on, an invalid value stops the mod with a message naming it (fork) | `90` |
 | `diffToggle` | `card` (a click on the card toggles it), `row` (fork: a click on the Edit or Write row toggles it; folded, the card is not drawn; open, only its lines) | `card` |
 | `editRow` | `path`, `file` (fork: the folder dim, the file name highlighted, then `+N −M`) | `path` |
 | `answerMark` | `true`, `false`: once a turn ends, a heavy rule `━` across the window above its final answer and its step lines (summary rows included) dimmed, read from the transcript (the last 500 turns); a turn with no step line is left as is, an interrupted turn has no answer, and a line written in more than one turn is never marked (fork) | `false` |
 | `stepMark` | `true`, `false`: once a turn ends, a dim thin rule `─` across the window above each step line but the first, so each step reads as a block; a summary row always gets one, as its place in the turn is unknown (fork) | `false` |
-| `editErrors` | `shown` (a failed Edit or Write prints its error under its row), `folded` (fork, with `diffToggle: row`: the error sits behind the row like a diff, the row's `failed` telling) | `shown` |
+| `editErrors` | `shown` (a failed Edit or Write prints its error under its row), `folded` (fork, with `diffToggle: row`, a `diffFold` other than `none` and `toolOutput` not `quiet`: the error sits behind the row like a diff, the row's `failed` telling) | `shown` |
 | `createdStyle` | `preview` (first lines under `Created path`), `card` (fork: drawn as an edit's card, same width, border and whole-card fold, on `createdBackground`) | `preview` |
 | `diffPath` | `true`, `false`: the edited file's path before `+N −M` on an edit's card (fork) | `false` |
 A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name (`green`, `cyanBright`). Values that don't parse are ignored. Every token has a `<token>Color` option and a row in `/config`:

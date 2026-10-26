@@ -1196,6 +1196,12 @@ const codeLabel = (block: Extract<Block, { kind: 'code' }>): string => `── $
 
 const codeNote = ({ Text }: ElementTable, text: string | undefined, color: string | undefined): RenderElement | null => (text ? <Text color={color}>{text}</Text> : null)
 
+const capped = ({ Box }: ElementTable, style: Style, block: Block, element: RenderElement, key: string, measure: number, columns: number): RenderElement => {
+  if (measure >= columns) return element
+  const start = !mirrored(style) && leadSide(style, block, measure) === 'R' ? { alignSelf: 'flex-end' as const } : {}
+  return <Box key={`${key}.measure`} width={measure} flexShrink={1} flexDirection="column" {...start}>{element}</Box>
+}
+
 type Float = { needs: number; marker: RenderElement; element: RenderElement | null }
 
 // With copyButtonStyle: icon, a copy marker with one action is that action: the icon is the
@@ -1267,22 +1273,19 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   }
   const room = (b: number) => (hover && buttons[b]!.first ? columns - MARK : columns)
   const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved([buttons[b]!.first]) - 2)
-  // proseCap: paragraphs, lists, quotes and alerts wrap at proseWidth columns, the comfortable
-  // reading measure; headings, code, tables, diagrams and cards keep the whole width.
-  const measure = style.proseCap ? Math.min(columns, style.proseWidth) : columns
-  const narrow = (element: RenderElement, key: string): RenderElement =>
-    measure < columns ? <Box key={`${key}.measure`} width={measure} flexShrink={1} flexDirection="column">{element}</Box> : element
+  const measure = style.proseWidth === null ? columns : Math.min(columns, style.proseWidth)
+  const narrow = (block: Block, element: RenderElement, key: string): RenderElement => capped(el, style, block, element, key, measure, columns)
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
     switch (block.kind) {
       case 'heading':
         return renderHeading(el, style, block, key)
       case 'paragraph':
-        return drawn.get(b)?.element ?? narrow(renderParagraph(el, style, block, measure, key, tip), key)
+        return drawn.get(b)?.element ?? narrow(block, renderParagraph(el, style, block, measure, key, tip), key)
       case 'quote':
-        return narrow(renderQuote(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
+        return narrow(block, renderQuote(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
       case 'alert':
-        return narrow(renderAlert(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
+        return narrow(block, renderAlert(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
       case 'rule':
         return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
       case 'code': {
@@ -1313,7 +1316,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return narrow(renderList(el, style, block, Math.min(room(b), measure), key, copy, fold, tip), key)
+        return narrow(block, renderList(el, style, block, Math.min(room(b), measure), key, copy, fold, tip), key)
       case 'table':
         return renderTable(el, style, block, room(b), key, rtlTables[b]!, tip)
       case 'notes':
@@ -1965,15 +1968,17 @@ const cardFrame = (style: Style, background: string | undefined) => (style.diffS
   ...(background ? { backgroundColor: background } : {}),
 })
 
-// diffFold: the whole card is the toggle, a click anywhere on it folds it to its head or opens it;
-// `open` cards start shown, `folded` ones as the head alone. Null when diffFold is none. The card
-// keeps its ground under the pointer; only a toggling row (diffToggle row) lights up.
+export const foldOpen = (style: Style, toggled: boolean): boolean => (style.diffFold === 'open' ? toggled : !toggled)
+
+export const foldLook = (style: Style, noun: string): FoldLook =>
+  style.diffFold === 'open' ? { label: `hide${noun}`, close: `show${noun}`, whole: true } : { label: `show${noun}`, close: `hide${noun}`, whole: true }
+
 const cardFold = (style: Style, fold: Fold, id: string, key: string): { open: boolean; around: (body: RenderElement) => RenderElement } | null => {
   if (style.diffFold === 'none') return null
-  const toggle = fold?.(`card:${id}`, 0, `cardfold${key}`, style.diffFold === 'open' ? { label: 'hide', close: 'show', whole: true } : { label: 'show', close: 'hide', whole: true })
+  const toggle = fold?.(`card:${id}`, 0, `cardfold${key}`, foldLook(style, ''))
   if (!toggle?.around) return null
   const around = toggle.around
-  return { open: style.diffFold === 'open' ? toggle.folded : !toggle.folded, around: body => around(body, { inverse: false }) }
+  return { open: foldOpen(style, toggle.folded), around: body => around(body, { inverse: false }) }
 }
 
 const diffRow = (el: ElementTable, style: Style, cards: RenderElement[], below: boolean): RenderElement => (
@@ -2312,11 +2317,8 @@ const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: num
   ))
 }
 
-export type RowToggle = { around: (text: RenderElement) => RenderElement; lit: TextHoverProps }
+export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) => RenderElement; lit: TextHoverProps }
 
-// `toggle` (diffToggle: row) makes the row's text the toggle of its file's diff card; `lit` is the
-// hover group every piece of the row joins, so the whole row brightens under the pointer (a
-// Button's own hover reaches only its label, not the Texts drawn inside it).
 export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns = 100, toggle?: RowToggle): RenderElement => {
   if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns)
   const { Text } = el
@@ -2331,31 +2333,31 @@ export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, colu
   const counts = stats ? ` +${stats.added} −${stats.removed}` : ''
 
   const label = `${verb}${target === undefined ? "" : ` ${target}`}${counts}${row.isInterrupted ? " interrupted" : row.isErrored ? " failed" : ""}`
-  const lit = toggle ? { hover: toggle.lit } : {}
+  const hoverProps = toggle ? { hover: toggle.lit } : {}
   const text = (
-      <Text wrap="truncate-end" dimColor={toolDim(style)} {...lit}>
-        <Text bold={!toolDim(style)} dimColor={toolDim(style)} {...lit}>{verb}</Text>
-        {target === undefined ? null : <Text {...lit}> </Text>}
-        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...lit}>{drawPieces(el, style, [{ text: target, path: toolPath(row.tool, found.path) }])}</Text>}
-        {row.isInterrupted ? <Text dimColor {...lit}> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag} {...lit}> failed</Text> : null}
+      <Text wrap="truncate-end" dimColor={toolDim(style)} {...hoverProps}>
+        <Text bold={!toolDim(style)} dimColor={toolDim(style)} {...hoverProps}>{verb}</Text>
+        {target === undefined ? null : <Text {...hoverProps}> </Text>}
+        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toolPath(row.tool, found.path) }])}</Text>}
+        {row.isInterrupted ? <Text dimColor {...hoverProps}> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag} {...hoverProps}> failed</Text> : null}
       </Text>
   )
-  return toolLayout(el, style, columns, label, dot, row.isRunning, toggle ? toggle.around(text) : text)
+  return toolLayout(el, style, columns, label, dot, row.isRunning, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
 }
 
 // editRow: file: the folder dim, the file name in the path color, then the diff's +N −M.
 const fileTarget = ({ Text }: ElementTable, style: Style, target: string, stats: FileStats, hover?: TextHoverProps): RenderElement => {
   const cut = target.lastIndexOf('/') + 1
   const marks = markColors(style.theme)
-  const lit = hover ? { hover } : {}
+  const hoverProps = hover ? { hover } : {}
   return (
-    <Text {...lit}>
-      {cut > 0 ? <Text dimColor {...lit}>{target.slice(0, cut)}</Text> : null}
-      <Text bold color={style.theme.path} {...lit}>{target.slice(cut)}</Text>
-      <Text {...lit}> </Text>
-      <Text color={marks['+']} dimColor={stats.added === 0} {...lit}>{`+${stats.added}`}</Text>
-      <Text {...lit}> </Text>
-      <Text color={marks['-']} dimColor={stats.removed === 0} {...lit}>{`−${stats.removed}`}</Text>
+    <Text {...hoverProps}>
+      {cut > 0 ? <Text dimColor {...hoverProps}>{target.slice(0, cut)}</Text> : null}
+      <Text bold color={style.theme.path} {...hoverProps}>{target.slice(cut)}</Text>
+      <Text {...hoverProps}> </Text>
+      <Text color={marks['+']} dimColor={stats.added === 0} {...hoverProps}>{`+${stats.added}`}</Text>
+      <Text {...hoverProps}> </Text>
+      <Text color={marks['-']} dimColor={stats.removed === 0} {...hoverProps}>{`−${stats.removed}`}</Text>
     </Text>
   )
 }

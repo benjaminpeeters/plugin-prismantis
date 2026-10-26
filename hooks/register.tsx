@@ -17,8 +17,8 @@ import { RUN_GLYPH, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
 import type { TurnMarks, TurnRole } from '../types'
 import { markTurns, roleOf } from './turns'
 import { drawDiagrams } from './mermaid'
-import type { CopyButton, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import { MARK, bashEdits, fileStats, glyphButton, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
+import { MARK, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -378,10 +378,9 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
   return { folded, faced: look?.face !== undefined, element, around: (rows, hover) => <el.Button key={`${key}.rows`} plain label={label} hover={hover} onPress={toggle}>{rows}</el.Button> }
 }
 
-// diffToggle row: an Edit or Write row toggles what sits under it; diffFold sets which way it starts.
 const rowToggles = (style: Style): boolean => style.diffToggle === 'row' && style.diffFold !== 'none'
 
-const rowLook = (style: Style): FoldLook => (style.diffFold === 'open' ? { label: 'hide diff', close: 'show diff', whole: true } : { label: 'show diff', close: 'hide diff', whole: true })
+const foldsError = (style: Style, tool: string): boolean => (tool === 'Edit' || tool === 'Write') && style.editErrors === 'folded' && style.toolOutput !== 'quiet' && rowToggles(style)
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, math: Map<number, Typeset> = new Map(), pictures: Map<number, Picture> = new Map(), reply?: string, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
   const { Button } = el
@@ -416,7 +415,7 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
     }
   }
   if (style.drafts) {
-    const body = (text: string, width: number) => drawMarkdown($, el, { ...style, inside: 'quote' }, parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths }), width)
+    const body = (text: string, width: number) => drawMarkdown($, el, { ...style, inside: 'quote', proseWidth: null }, parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths }), width)
     for (const [i, block] of blocks.entries()) {
       if (block.kind === 'code' && isDraftLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawDraft(el, style, block.lines, icon, `b${i}`, columns - markerRoom(style), body) })
     }
@@ -704,13 +703,11 @@ export const register: Register = (on, options) => {
       if (!expandedCalls.has(e.props.tool_use_id)) {
         const el = $.ui.resolve(e)
         const edit = e.props.tool === 'Edit' || e.props.tool === 'Write'
-        const file = edit && (!e.props.isErrored || style.editErrors === 'folded')
+        const foldable = edit && (!e.props.isErrored || foldsError(style, e.props.tool))
         const stats = edit && !e.props.isErrored && style.editRow === 'file' ? fileStats(e.props.output) : undefined
-        // diffToggle row: a click on an Edit or Write row opens or folds its card (or, editErrors folded, its error), sharing the fold id `card:<tool id>`.
-        const toggle = file && rowToggles(style) ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', rowLook(style)) : null
-        // The row brightens under the pointer, as Claude Code's own clickable rows do: one hover group per row.
+        const toggle = foldable && rowToggles(style) ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', foldLook(style, e.props.isErrored ? ' error' : ' diff')) : null
         const lit = { scope: `row:${instanceKey(e.props.tool_use_id)}`, dimColor: false }
-        const row = toggle?.around ? { around: (text: RenderElement) => toggle.around!(text, { inverse: false, ...lit }), lit } : undefined
+        const row = toggle?.around ? { around: toggle.around, lit } : undefined
         return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, row)
       }
       const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
@@ -719,11 +716,10 @@ export const register: Register = (on, options) => {
     on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
       const cards = (): Style => ({ ...fit(e.viewport), pressPreview: e.surface === 'terminal' })
       if ((e.props.tool === 'Edit' || e.props.tool === 'Write') && !e.props.isErrored) return (await fileCard($, $.ui.resolve(e), e.props.output, e.props.tool_use_id, style, probes, cards, e.viewport?.columns)) ?? next(e)
-      // editErrors folded: a failed Edit or Write keeps its error behind its row, as a diff card does; " failed ●" on the row tells.
-      if ((e.props.tool === 'Edit' || e.props.tool === 'Write') && e.props.isErrored && style.editErrors === 'folded' && rowToggles(style)) {
+      if (e.props.isErrored && foldsError(style, e.props.tool)) {
         const el = $.ui.resolve(e)
-        const toggle = folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'errorfold', rowLook(style))
-        const open = toggle !== null && (style.diffFold === 'open' ? toggle.folded : !toggle.folded)
+        const toggle = folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'errorfold', foldLook(style, ' error'))
+        const open = toggle !== null && foldOpen(style, toggle.folded)
         if (!open) return <el.Box />
       }
       const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
