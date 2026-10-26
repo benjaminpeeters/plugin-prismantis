@@ -4,6 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { DIFF_PALETTES, DIFFS_TEXT } from '../hooks/diff-palettes'
 import { diffTint } from '../hooks/render'
 import { PRESETS } from '../hooks/presets'
+import { labelled } from './buttons'
 import { claudeAt } from './claude-version'
 
 const t = PRESETS['catppuccin-mocha']
@@ -56,7 +57,7 @@ for (const diffFold of ['open', 'folded'] as const) {
     const ui = await $.ui.mount(edit)
     const lines = async () => !!(await ui.find({ type: 'Text', text: /const c = 4/ }))
     expect(await lines()).toBe(diffFold === 'open')
-    const whole = await ui.find({ type: 'Button', props: { label: diffFold === 'open' ? 'hide' : 'show' } })
+    const whole = await labelled(ui, diffFold === 'open' ? 'hide' : 'show')
     expect(whole?.props.plain).toBe(true)
     expect(whole?.text).toMatch(/\+2 −1/)
     await ui.press({ key: 'cardfold.rows' })
@@ -110,7 +111,7 @@ test('diffToggle row: the Edit row toggles its card, which draws nothing while f
     return shown
   }
   expect(await card()).toEqual({ lines: false, head: false })
-  const toggle = await row.find({ type: 'Button', props: { label: 'show diff' } })
+  const toggle = await labelled(row, 'show diff')
   expect(toggle?.text).toMatch(/Edited/)
   await row.press({ key: 'rowfold.rows' })
   expect(await card()).toEqual({ lines: true, head: false })
@@ -133,7 +134,7 @@ test('editErrors folded hides a failed edit\'s error behind its row until the ro
   expect(await engineShown()).toBe(false)
   const row = await $.ui.mount(failedRow)
   expect(await row.find({ type: 'Text', text: / failed$/ })).toBeTruthy()
-  expect((await row.findAll({ type: 'Button' })).map(button => button.props.label)).toContain('show error')
+  expect(await labelled(row, 'show error')).toBeTruthy()
   await row.press({ key: 'rowfold.rows' })
   expect(await engineShown()).toBe(true)
   await row.unmount()
@@ -160,7 +161,7 @@ test('createdStyle preview, the default, keeps the created file as it was', asyn
   inApp(on)
   const ui = await $.ui.mount(write)
   expect(await ui.find({ type: 'Text', text: /second line/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Button', props: { label: 'show' } })).toBeUndefined()
+  expect(await labelled(ui, 'show')).toBeUndefined()
   await ui.unmount()
 })
 
@@ -202,7 +203,7 @@ test('diffTint 0 leaves changed lines on the card ground while changed words kee
 test('diffFold none, the default, draws no fold button and every line', async ($, on) => {
   engine(on)
   const ui = await $.ui.mount(edit)
-  expect(await ui.find({ type: 'Button', props: { label: 'hide' } })).toBeUndefined()
+  expect(await labelled(ui, 'hide')).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /const c = 4/ })).toBeTruthy()
   await ui.unmount()
 })

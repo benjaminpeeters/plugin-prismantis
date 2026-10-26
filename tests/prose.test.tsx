@@ -1,12 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
 import { resolveStyle } from '../hooks/theme'
+import type { Found } from './buttons'
 
 const reply = 'A paragraph long enough to read as prose.\n\n- a list item\n- another\n\n```ts\nconst wide = "code keeps the whole width"\n```'
 
 const mount = (surface: 'terminal' | 'desktop', text = reply) => ({ plugin: 'prismantis', component: 'AssistantMessage' as const, props: { text, isFirstOfReply: true }, viewport: { columns: 160, rows: 40 }, surface })
 
-const measured = async (ui: { findAll: (q: { type: 'Box' }) => Promise<{ props: Record<string, unknown>; text?: string }[]> }) =>
+const measured = async (ui: { findAll: (q: { type: 'Box' }) => Promise<Found[]> }) =>
   (await ui.findAll({ type: 'Box' })).filter(box => box.props.width === 80).map(box => box.text ?? '')
 
 for (const surface of ['terminal', 'desktop'] as const) {

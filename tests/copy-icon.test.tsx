@@ -1,5 +1,8 @@
+import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { labelled } from './buttons'
 import { recordCopies, recordToasts } from './clipboard-env'
 
 const message = (text: string, surface: 'terminal' | 'desktop' = 'terminal') => ({
@@ -12,7 +15,7 @@ const message = (text: string, surface: 'terminal' | 'desktop' = 'terminal') => 
 
 const footer = { plugin: 'prismantis', surface: 'terminal' as const, component: 'TurnDuration' as const, props: { word: 'Cogitated', durationMs: 354000 } }
 
-const finish = async ($: Parameters<Parameters<typeof test>[2]>[0], on: Parameters<Parameters<typeof test>[2]>[1], answer: string) => {
+const finish = async ($: Engine, on: On, answer: string) => {
   mock.clock(on, { now: new Date(2026, 9, 10, 18, 31).getTime() })
   on('turn.complete', async (_$, e) => ({ text: e.answer }))
   await $.turn.complete({ answer, durationMs: 354000, isAborted: false, turnId: 't1', reason: 'answer' })
@@ -30,7 +33,7 @@ test('replyCopy footer puts an icon on the turn footer that copies that turn\'s 
   const toasts = recordToasts(on)
   await finish($, on, 'First part.\n\nSecond part.')
   const ui = await $.ui.mount(footer)
-  const icon = await ui.find({ type: 'Button', props: { label: 'copy reply' } })
+  const icon = await labelled(ui, 'copy reply')
   expect(icon?.props.plain).toBe(true)
   expect(icon?.text).toBe('')
   await ui.press({ key: 'turn.copy' })
@@ -56,10 +59,10 @@ test('replyCopy message, the default, leaves the footer without a copy icon', as
 test('with replyCopy footer a terminal reply has no copy-reply button of its own; on desktop it keeps one', { options: { replyCopy: 'footer' } }, async $ => {
   const text = 'One.\n\nTwo.'
   const terminal = await $.ui.mount(message(text))
-  expect((await terminal.findAll({ type: 'Button' })).map(b => b.props.label)).not.toContain('⧉ copy reply')
+  expect(await labelled(terminal, '⧉ copy reply')).toBeUndefined()
   await terminal.unmount()
   const desktop = await $.ui.mount(message(text, 'desktop'))
-  expect((await desktop.findAll({ type: 'Button' })).map(b => b.props.label)).toContain('⧉ copy reply')
+  expect(await labelled(desktop, '⧉ copy reply')).toBeTruthy()
   await desktop.unmount()
 })
 
