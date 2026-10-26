@@ -1,5 +1,6 @@
 import type { ElementTable, RenderElement } from 'claude-code'
 
+import type { DrawnBlock } from './render'
 import { cells, graphemes, heldLtr, mirrored, remember, width } from './render'
 import { FIGURE_ROLES } from './markdown'
 import { asIs, hasRtl, holdEngine, holdText, holdVisual, led } from './rtl'
@@ -370,7 +371,7 @@ const decide = (raw: readonly string[]): FigureDecision => {
   return finding ? { note: `figure line ${finding.line}: ${finding.message}` } : drawable(lines)
 }
 
-export const drawFigure = (el: ElementTable, style: Style, block: { lines: readonly string[]; isOpen?: true }, columns: number, key: string): { element?: RenderElement; art?: string; note?: string } | null => {
+export const drawFigure = (el: ElementTable, style: Style, block: { lines: readonly string[]; isOpen?: true }, columns: number, key: string): DrawnBlock | null => {
   if (block.isOpen) return null
   const decision = remember(decisions, block.lines.join('\n'), () => decide(block.lines))
   if ('note' in decision) return decision

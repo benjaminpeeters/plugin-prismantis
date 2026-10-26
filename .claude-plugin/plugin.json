@@ -387,6 +387,18 @@
       "default": "card",
       "options": ["card", "row"]
     },
+    "answerMark": {
+      "type": "boolean",
+      "title": "Mark the answer",
+      "description": "Once a turn ends, draw a heavy rule across the window above its final answer and dim its step lines, the short lines Claude writes before tool calls, and the summary rows Claude Code draws in place of such text (fork). Read from the transcript at each turn's end and at session start, the last 500 turns only; a turn with no step line is left as is, a turn that ends on a tool call (interrupted) has no answer, and a line Claude wrote in more than one turn is never marked.",
+      "default": false
+    },
+    "stepMark": {
+      "type": "boolean",
+      "title": "Mark each step",
+      "description": "Once a turn ends, draw a dim thin rule across the window above each of its step lines but the first, so every step (a short line and the tool rows after it) reads as its own block (fork). A summary row Claude Code draws in place of a step line always gets one, as its place in the turn is unknown. Read from the transcript like answerMark; works with or without it.",
+      "default": false
+    },
     "editErrors": {
       "type": "string",
       "title": "Failed edit errors",
@@ -467,7 +479,7 @@
     "handoff": {
       "type": "boolean",
       "title": "Hand-off blocks",
-      "description": "Draw ```handoff blocks (CLAUDE: and CMD: entries Claude hands you to run) as one card at the end of the reply, Claude Code inputs first, each with a copy button, and a red line for every malformed entry. Off leaves them as code.",
+      "description": "Draw ```handoff blocks (CLAUDE: and CMD: entries Claude hands you to run) as one card at the end of the reply, Claude Code inputs first, each with a copy icon; a one-line slash command also gets a ▷ that runs it in the session. A block with any problem is not drawn as a card: it stays code, under a red line per problem and one naming where the format is. Off leaves them as code.",
       "default": true
     },
     "drafts": {

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { handoffLast, parseHandoff } from '../hooks/handoff'
+import { HANDOFF_FORMAT, handoffLast, parseHandoff } from '../hooks/handoff'
 import { parse } from '../hooks/markdown'
 import { recordCopies, recordToasts } from './clipboard-env'
 
@@ -9,7 +9,7 @@ const hl = { numbers: false, paths: false }
 const lines = (text: string) => text.split('\n')
 
 test('a handoff block parses single-line and multi-line entries with their notes and expect line', () => {
-  const { entries, problems } = parseHandoff(lines([
+  const handoff = parseHandoff(lines([
     'CLAUDE: /add-dir ~/repo/foo',
     '  # makes foo writable for this session',
     '  # Expect:  "Added ~/repo/foo"',
@@ -21,15 +21,17 @@ test('a handoff block parses single-line and multi-line entries with their notes
     '    make install',
     '  # builds and installs x',
   ].join('\n')))
-  expect(problems).toEqual([])
-  expect(entries).toEqual([
-    { key: 'CLAUDE', command: '/add-dir ~/repo/foo', notes: ['makes foo writable for this session', 'expect: "Added ~/repo/foo"', 'if it fails, the path is wrong'] },
-    { key: 'CMD', command: 'cd ~/x\n# a shell comment stays in the command\nmake install', notes: ['builds and installs x'] },
-  ])
+  expect(handoff).toEqual({
+    ok: true,
+    entries: [
+      { key: 'CLAUDE', command: '/add-dir ~/repo/foo', notes: ['makes foo writable for this session', 'expect: "Added ~/repo/foo"', 'if it fails, the path is wrong'] },
+      { key: 'CMD', command: 'cd ~/x\n# a shell comment stays in the command\nmake install', notes: ['builds and installs x'] },
+    ],
+  })
 })
 
 test('every malformed entry is a problem, never dropped silently', () => {
-  const { problems } = parseHandoff(lines([
+  const handoff = parseHandoff(lines([
     'CMD: /reload-plugins',
     '  # reloads',
     'SHELL: ls',
@@ -38,14 +40,23 @@ test('every malformed entry is a problem, never dropped silently', () => {
     'CMD: |',
     '  # nothing to run',
   ].join('\n')))
-  expect(problems).toEqual([
-    'line 3: unknown key SHELL: (use CLAUDE: or CMD:)',
-    'line 4 is outside any entry: stray text',
-    'CMD: /reload-plugins is a slash command: key it CLAUDE:',
-    '/login has no # explanation',
-    'CMD: | has no command lines indented 4 spaces',
-  ])
-  expect(parseHandoff([]).problems).toEqual(['no CLAUDE: or CMD: entry'])
+  expect(handoff).toEqual({
+    ok: false,
+    problems: [
+      'line 3: unknown key SHELL: (use CLAUDE: or CMD:)',
+      'line 4 is outside any entry: stray text',
+      'CMD: /reload-plugins is a slash command: key it CLAUDE:',
+      '/login has no # explanation',
+      'CMD: | has no command lines indented 4 spaces',
+    ],
+  })
+  expect(parseHandoff([])).toEqual({ ok: false, problems: ['no CLAUDE: or CMD: entry'] })
+})
+
+test('a terminal command that opens with an absolute path is not a slash command', () => {
+  expect(parseHandoff(['CMD: /usr/bin/env python3 x.py', '  # runs x']).ok).toBe(true)
+  expect(parseHandoff(['CMD: /opt/x/install.sh', '  # installs x']).ok).toBe(true)
+  expect(parseHandoff(['CMD: /reload-plugins\tnow', '  # reloads']).ok).toBe(false)
 })
 
 test('handoff blocks move after the last other block, merged into one', () => {
@@ -70,8 +81,8 @@ const reply = [
   '```handoff',
   'CLAUDE: /reload-plugins',
   '  # loads the change',
-  'CMD: /add-dir ~/x',
-  '  # miskeyed on purpose',
+  'CMD: ls -la ~/x',
+  '  # lists x',
   '```',
 ].join('\n')
 
@@ -93,7 +104,7 @@ test('a reply draws one hand-off card at its end, Claude Code inputs first, each
   expect(at(/^Claude Code$/)).toBeLessThan(at(/^Terminal$/))
   expect(at(/^For you to run$/)).toBe(-1)
   expect(at(/expect: gum --version prints a version/)).toBeGreaterThan(-1)
-  expect(at(/^✗ handoff: CMD: \/add-dir ~\/x is a slash command: key it CLAUDE:$/)).toBeGreaterThan(at(/^Terminal$/))
+  expect(texts.some(text => /✗ handoff/.test(text ?? ''))).toBe(false)
   const icons = (await ui.findAll({ type: 'Button' })).filter(button => button.props.label === 'copy')
   expect(icons).toHaveLength(3)
   expect(icons.every(button => button.props.plain && button.text === '')).toBe(true)
@@ -101,6 +112,42 @@ test('a reply draws one hand-off card at its end, Claude Code inputs first, each
   await ui.press({ key: 'b1.copy0' })
   await ui.press({ key: 'b1.copy1' })
   expect(copies).toEqual(['/reload-plugins', 'sudo apt install gum'])
+  await ui.unmount()
+})
+
+test('a slash command entry has a run mark that runs it in the session; a terminal command has none', async ($, on) => {
+  const ran: { command: string; args: string }[] = []
+  on('command.run', (_$, e) => {
+    ran.push({ command: e.command, args: e.args })
+    return { text: '' }
+  })
+  const text = '```handoff\nCLAUDE: /plugin marketplace remove claude-plugin-meta\n  # drops the old record\nCMD: sudo apt install gum\n  # installs gum\n```'
+  const ui = await $.ui.mount({ ...mount(), props: { text, isFirstOfReply: true } })
+  const marks = (await ui.findAll({ type: 'Button' })).filter(button => String(button.props.label).startsWith('run '))
+  expect(marks.map(button => button.props.label)).toEqual(['run /plugin marketplace remove claude-plugin-meta'])
+  expect(marks[0]!.text).toBe('▷')
+  await ui.press({ key: 'b0.run0' })
+  expect(ran).toEqual([{ command: 'plugin', args: 'marketplace remove claude-plugin-meta' }])
+  await ui.unmount()
+})
+
+test('a block with any problem is not drawn as a card: it stays code, under a red note pointing to the format', async ($, on) => {
+  recordCopies(on)
+  const broken = '```handoff\n/plugin marketplace remove claude-plugin-meta\n/reload-plugins\n```'
+  const ui = await $.ui.mount({ ...mount(), props: { text: broken, isFirstOfReply: true } })
+  expect(await ui.find({ type: 'Text', text: /^Claude Code$/ })).toBeUndefined()
+  const note = await ui.find({ type: 'Text', text: /✗ handoff: line 1 is outside any entry: \/plugin marketplace remove claude-plugin-meta/ })
+  expect(note?.text).toContain(`✗ handoff: not drawn as a card; ${HANDOFF_FORMAT}`)
+  expect(await ui.find({ type: 'Text', text: /\/reload-plugins/ })).toBeTruthy()
+  expect((await ui.findAll({ type: 'Button' })).map(button => button.props.label)).toContain('⧉ copy')
+  await ui.unmount()
+})
+
+test('one bad entry rejects the whole card, valid entries included', async $ => {
+  const mixed = '```handoff\nCLAUDE: /reload-plugins\n  # loads the change\nCMD: /add-dir ~/x\n  # miskeyed\n```'
+  const ui = await $.ui.mount({ ...mount(), props: { text: mixed, isFirstOfReply: true } })
+  expect(await ui.find({ type: 'Text', text: /^Claude Code$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /✗ handoff: CMD: \/add-dir ~\/x is a slash command: key it CLAUDE:/ })).toBeTruthy()
   await ui.unmount()
 })
 

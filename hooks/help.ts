@@ -96,7 +96,7 @@ A file Write creates shows its first 10 lines as numbered code in the theme's co
 
 ### Hand-off blocks
 
-What Claude hands you to run goes in a \`handoff\` block: \`CLAUDE:\` for the Claude Code prompt, \`CMD:\` for a terminal. All of a reply's hand-offs draw as one card at its end, Claude Code inputs first, each with its own copy icon; a malformed entry gets a red line. Turn it off with \`handoff\` in \`/config\`.
+What Claude hands you to run goes in a \`handoff\` block: \`CLAUDE:\` for the Claude Code prompt, \`CMD:\` for a terminal. All of a reply's hand-offs draw as one card at its end, Claude Code inputs first, each with its own copy icon, and a slash command also gets a ▷ that runs it in the session; a block with a problem stays code, under red lines saying what's wrong. Turn it off with \`handoff\` in \`/config\`.
 
 \`\`\`handoff
 CMD: sudo apt install gum

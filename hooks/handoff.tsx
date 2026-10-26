@@ -1,7 +1,7 @@
 import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { Block } from './markdown'
-import type { CopyButton } from './render'
+import type { CopyButton, DrawnBlock } from './render'
 import { width } from './render'
 import type { Style } from './theme'
 
@@ -14,7 +14,11 @@ export type HandoffKey = 'CLAUDE' | 'CMD'
 // notes keep the written order, the `expect:` line among them.
 export type HandoffEntry = { key: HandoffKey; command: string; notes: string[] }
 
-export type Handoff = { entries: HandoffEntry[]; problems: string[] }
+export type Handoff = { ok: true; entries: HandoffEntry[] } | { ok: false; problems: string[] }
+
+export type SlashCommand = { command: string; args: string }
+
+export type RunButton = (slash: SlashCommand, line: string, key: string) => RenderElement | null
 
 const ENTRY = /^(CLAUDE|CMD):\s*(.*)$/
 
@@ -24,9 +28,27 @@ const NOTE = /^ {1,3}#\s?(.*)$/
 
 const CONTINUED = /^ {4}(.*)$/
 
+const SLASH = /^\/([\w:-]+)(?:\s+([\s\S]*))?$/
+
 export const isHandoffLang = (lang: string): boolean => lang.toLowerCase() === 'handoff'
 
+export const RUN_GLYPH = '▷'
+
+const slashCommand = (e: HandoffEntry): SlashCommand | undefined => {
+  const match = e.key === 'CLAUDE' && !e.command.includes('\n') ? SLASH.exec(e.command) : null
+  return match ? { command: match[1]!, args: (match[2] ?? '').trim() } : undefined
+}
+
 const isExpect = (note: string): boolean => /^expect:/i.test(note)
+
+const entryProblems = (e: HandoffEntry & { block: boolean }): string[] => {
+  const name = e.command.split('\n')[0] || `${e.key}: |`
+  const problems: string[] = []
+  if (!e.command) problems.push(e.block ? `${e.key}: | has no command lines indented 4 spaces` : `${e.key}: has no command`)
+  if (e.key === 'CMD' && SLASH.test(e.command)) problems.push(`CMD: ${name} is a slash command: key it CLAUDE:`)
+  if (!e.notes.length) problems.push(`${name} has no # explanation`)
+  return problems
+}
 
 export const parseHandoff = (lines: readonly string[]): Handoff => {
   const entries: (HandoffEntry & { block: boolean })[] = []
@@ -53,14 +75,9 @@ export const parseHandoff = (lines: readonly string[]): Handoff => {
     const other = OTHER_KEY.exec(line)
     problems.push(other ? `line ${i + 1}: unknown key ${other[1]}: (use CLAUDE: or CMD:)` : `line ${i + 1} is outside any entry: ${line.trim()}`)
   }
-  for (const e of entries) {
-    const name = e.command.split('\n')[0] || `${e.key}: |`
-    if (!e.command) problems.push(e.block ? `${e.key}: | has no command lines indented 4 spaces` : `${e.key}: has no command`)
-    if (e.key === 'CMD' && e.command.startsWith('/')) problems.push(`CMD: ${name} is a slash command: key it CLAUDE:`)
-    if (!e.notes.length) problems.push(`${name} has no # explanation`)
-  }
+  problems.push(...entries.flatMap(entryProblems))
   if (!entries.length && !problems.length) problems.push('no CLAUDE: or CMD: entry')
-  return { entries: entries.map(({ block: _, ...e }) => e), problems }
+  return problems.length ? { ok: false, problems } : { ok: true, entries: entries.map(({ block: _, ...e }) => e) }
 }
 
 const isHandoff = (block: Block): block is Extract<Block, { kind: 'code' }> =>
@@ -84,32 +101,43 @@ const BADGE_WIDTH = Math.max(...Object.values(BADGE).map(label => label.length))
 const FRAME = 4
 const GAPS = 2
 
-// The card is as wide as its longest line, at most `columns`; the text column between badge and
-// copy icon then wraps, so a long note or command continues under itself, not under the badge.
-// `copy` draws the icon that copies one entry's command.
-export const drawHandoff = ({ Box, Text }: ElementTable, style: Style, lines: readonly string[], copy: CopyButton | undefined, key: string, columns: number): RenderElement => {
+export const HANDOFF_FORMAT = 'the format is in plugin-display-hint, plugin/note.md'
+
+const handoffRejection = (problems: readonly string[]): string =>
+  [...problems.map(problem => `✗ handoff: ${problem}`), `✗ handoff: not drawn as a card; ${HANDOFF_FORMAT}`].join('\n')
+
+const drawHandoff = ({ Box, Text }: ElementTable, style: Style, { entries }: Extract<Handoff, { ok: true }>, copy: CopyButton | undefined, key: string, columns: number, run: RunButton): RenderElement => {
   const t = style.theme
-  const { entries, problems } = parseHandoff(lines)
   const ordered = [...entries.filter(e => e.key === 'CLAUDE'), ...entries.filter(e => e.key === 'CMD')]
   const color = (e: HandoffEntry) => (e.key === 'CLAUDE' ? t.link : t.codeCommand)
-  const button = copy ? width(style.copyIcon) + 2 : 0
+  const button = (copy ? width(style.copyIcon) + 2 : 0) + (ordered.some(slashCommand) ? width(RUN_GLYPH) + 1 : 0)
   const longest = Math.max(0, ...ordered.flatMap(e => [...e.command.split('\n'), ...e.notes].map(width)))
   const natural = FRAME + BADGE_WIDTH + GAPS + longest + button
   return (
     <Box key={key} flexDirection="column" alignSelf="flex-start">
       <Box width={Math.min(columns, natural)} borderStyle="round" borderColor={t.codeComment} paddingX={1} flexDirection="column" rowGap={1}>
-        {ordered.map((e, i) => (
-          <Box key={`${key}.${i}`} flexDirection="row" columnGap={2}>
-            <Box width={BADGE_WIDTH} flexShrink={0}><Text bold color={color(e)}>{BADGE[e.key]}</Text></Box>
-            <Box width={0} flexGrow={1} flexDirection="column">
-              {e.command.split('\n').map((row, r) => <Text key={`c${r}`} color={t.codeText} wrap="wrap">{row}</Text>)}
-              {e.notes.map((note, n) => <Text key={`n${n}`} color={isExpect(note) ? t.number : t.codeComment} wrap="wrap">{note}</Text>)}
+        {ordered.map((e, i) => {
+          const slash = slashCommand(e)
+          return (
+            <Box key={`${key}.${i}`} flexDirection="row" columnGap={2}>
+              <Box width={BADGE_WIDTH} flexShrink={0}><Text bold color={color(e)}>{BADGE[e.key]}</Text></Box>
+              <Box width={0} flexGrow={1} flexDirection="column">
+                {e.command.split('\n').map((row, r) => <Text key={`c${r}`} color={t.codeText} wrap="wrap">{row}</Text>)}
+                {e.notes.map((note, n) => <Text key={`n${n}`} color={isExpect(note) ? t.number : t.codeComment} wrap="wrap">{note}</Text>)}
+              </Box>
+              <Box flexShrink={0} flexDirection="row" columnGap={1}>
+                {slash ? run(slash, e.command, `${key}.run${i}`) : null}
+                {copy ? copy(e.command, `${key}.copy${i}`) : null}
+              </Box>
             </Box>
-            {copy ? <Box flexShrink={0}>{copy(e.command, `${key}.copy${i}`)}</Box> : null}
-          </Box>
-        ))}
+          )
+        })}
       </Box>
-      {problems.map((problem, p) => <Text key={`${key}.p${p}`} color={t.codeFlag} wrap="wrap">✗ handoff: {problem}</Text>)}
     </Box>
   )
+}
+
+export const drawnHandoff = (el: ElementTable, style: Style, lines: readonly string[], copy: CopyButton | undefined, key: string, columns: number, run: RunButton): DrawnBlock => {
+  const handoff = parseHandoff(lines)
+  return handoff.ok ? { element: drawHandoff(el, style, handoff, copy, key, columns, run) } : { warning: handoffRejection(handoff.problems) }
 }

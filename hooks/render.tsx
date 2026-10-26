@@ -959,7 +959,7 @@ const drawHeading = (el: ElementTable, style: Style, block: Extract<Block, { kin
 
 const ALERT_COLOR = { note: 'blue', tip: 'green', important: 'magenta', warning: 'yellow', caution: 'red' } as const
 
-const prose = (style: Style) => (style.inside === 'quote' ? { italic: true, color: style.theme.quote } : {})
+const prose = (style: Style) => (style.inside === 'quote' ? { italic: true, color: style.theme.quote } : style.dimProse ? { dimColor: true } : {})
 
 const renderParagraph = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'paragraph' }>, columns: number, key: string, tip?: Tip) => {
   const { Box, Text } = el
@@ -1128,7 +1128,8 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
 }
 
 export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
-export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
+export type DrawnBlock = { element: RenderElement; art?: string; note?: never; warning?: never } | { element?: never; art?: never; note?: string; warning?: string }
+export type Drawn = Map<number, DrawnBlock>
 // `whole`: the caller makes its whole drawing the toggle (`around`), whatever the surface's faces.
 export type FoldLook = { label?: string; close?: string; whole?: true; face?: (folded: boolean) => RenderElement }
 export type Fold = (id: string, hidden: number, key: string, look?: FoldLook) => { folded: boolean; element: RenderElement; faced: boolean; around?: (rows: RenderElement, hover: TextHoverProps) => RenderElement } | null
@@ -1193,15 +1194,19 @@ export const markerRoom = (style: Style): number => (style.copyButtons && style.
 
 const codeLabel = (block: Extract<Block, { kind: 'code' }>): string => `── ${block.lang || 'code'}`
 
+const codeNote = ({ Text }: ElementTable, text: string | undefined, color: string | undefined): RenderElement | null => (text ? <Text color={color}>{text}</Text> : null)
+
 type Float = { needs: number; marker: RenderElement; element: RenderElement | null }
 
 // With copyButtonStyle: icon, a copy marker with one action is that action: the icon is the
 // button, so a click copies at once instead of opening a menu of one.
 // The Button keeps its press handle, so the icon runs the very handler the button was drawn with.
-export const iconButton = ({ Text }: ElementTable, style: Style, button: RenderElement, key: string): RenderElement => {
+export const iconButton = (el: ElementTable, style: Style, button: RenderElement, key: string): RenderElement => glyphButton(el, style.copyIcon, button, key)
+
+export const glyphButton = ({ Text }: ElementTable, glyph: string, button: RenderElement, key: string): RenderElement => {
   if (button.type !== 'Button') return button
   const { variant: _, ...props } = button.props
-  return { ...button, props: { ...props, key, plain: true }, children: [<Text key="icon" dimColor>{style.copyIcon}</Text>] }
+  return { ...button, props: { ...props, key, plain: true }, children: [<Text key="icon" dimColor>{glyph}</Text>] }
 }
 
 const buttonText = (button: RenderElement | null | undefined): string | undefined =>
@@ -1264,26 +1269,25 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved([buttons[b]!.first]) - 2)
   // proseCap: paragraphs, lists, quotes and alerts wrap at proseWidth columns, the comfortable
   // reading measure; headings, code, tables, diagrams and cards keep the whole width.
-  const prose = style.proseCap ? Math.min(columns, style.proseWidth) : columns
+  const measure = style.proseCap ? Math.min(columns, style.proseWidth) : columns
   const narrow = (element: RenderElement, key: string): RenderElement =>
-    prose < columns ? <Box key={`${key}.measure`} width={prose} flexShrink={1} flexDirection="column">{element}</Box> : element
+    measure < columns ? <Box key={`${key}.measure`} width={measure} flexShrink={1} flexDirection="column">{element}</Box> : element
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
     switch (block.kind) {
       case 'heading':
         return renderHeading(el, style, block, key)
       case 'paragraph':
-        return drawn.get(b)?.element ?? narrow(renderParagraph(el, style, block, prose, key, tip), key)
+        return drawn.get(b)?.element ?? narrow(renderParagraph(el, style, block, measure, key, tip), key)
       case 'quote':
-        return narrow(renderQuote(el, style, block, Math.min(beside(b), prose), key, copy, fold, tip), key)
+        return narrow(renderQuote(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
       case 'alert':
-        return narrow(renderAlert(el, style, block, Math.min(beside(b), prose), key, copy, fold, tip), key)
+        return narrow(renderAlert(el, style, block, Math.min(beside(b), measure), key, copy, fold, tip), key)
       case 'rule':
         return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
       case 'code': {
         const done = drawn.get(b)?.element
         if (done) return done
-        const note = drawn.get(b)?.note
         const lines = block.lines
         const toggle = lines.length > FOLD_AT ? fold?.(codeId(lines), lines.length - FOLD_SHOW, `fold${b}`) : null
         const shown = toggle?.folded ? FOLD_SHOW : lines.length
@@ -1297,7 +1301,8 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         const head = codeHead(label, button)
         return (
           <Box key={key} flexDirection="column" alignSelf="flex-start" minWidth={head?.minWidth}>
-            {note ? <Text color={t.codeComment}>{note}</Text> : null}
+            {codeNote(el, drawn.get(b)?.note, t.codeComment)}
+            {codeNote(el, drawn.get(b)?.warning, t.codeFlag)}
             <Box flexDirection="row" justifyContent="space-between" columnGap={head ? 1 : 4}>
               <Text color={t.codeComment}>{label}</Text>
               {head ? head.marker : button}
@@ -1308,7 +1313,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return narrow(renderList(el, style, block, Math.min(room(b), prose), key, copy, fold, tip), key)
+        return narrow(renderList(el, style, block, Math.min(room(b), measure), key, copy, fold, tip), key)
       case 'table':
         return renderTable(el, style, block, room(b), key, rtlTables[b]!, tip)
       case 'notes':

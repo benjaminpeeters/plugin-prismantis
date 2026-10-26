@@ -12,10 +12,13 @@ import { FIGURE_HINT } from './figure'
 import type { DiffPalette } from './diff-palettes'
 import { DIFF_PALETTES, DIFFS_TEXT, paletteOptions } from './diff-palettes'
 import { drawDraft, isDraftLang } from './draft'
-import { drawHandoff, handoffLast, isHandoffLang } from './handoff'
+import type { RunButton, SlashCommand } from './handoff'
+import { RUN_GLYPH, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
+import type { TurnMarks, TurnRole } from '../types'
+import { markTurns, roleOf } from './turns'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import { MARK, bashEdits, fileStats, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import { MARK, bashEdits, fileStats, glyphButton, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -67,10 +70,18 @@ const unfolded = atom({ plugin: 'prismantis', key: 'unfolded' } as const, [] as 
 const sent = atom({ plugin: 'prismantis', key: 'sent' } as const, [])
 const turnEnds = atom({ plugin: 'prismantis', key: 'turnEnds' } as const, [])
 const replies = atom({ plugin: 'prismantis', key: 'replies' } as const, [])
+const turnMarks = atom({ plugin: 'prismantis', key: 'turnMarks' } as const, {} as TurnMarks)
+const turnStart = atom({ plugin: 'prismantis', key: 'turnStart' } as const, null as number | null)
 const setupAt = atom({ plugin: 'prismantis', key: 'setupAt' } as const, 0)
 const setupFocus = atom({ plugin: 'prismantis', key: 'setupFocus' } as const, '')
 const setupLand = atom({ plugin: 'prismantis', key: 'setupLand' } as const, '')
 const foundPaths = atom({ plugin: 'prismantis', key: 'foundPaths' } as const, [])
+
+const readTurnMarks = async ($: EngineInterface): Promise<void> => {
+  const marks = markTurns(await $.session.messages())
+  await update($, turnMarks, () => marks)
+  await update($, turnStart, () => null)
+}
 
 const firstDrawn = async ($: EngineInterface, id: string): Promise<number> => {
   const ref = { plugin: 'prismantis', key: 'drawn', id } as const
@@ -79,6 +90,37 @@ const firstDrawn = async ($: EngineInterface, id: string): Promise<number> => {
   const now = await $.clock.now()
   $.clock.after(0, () => void $.state.set(ref, now, { ifVersion: 0 }))
   return now
+}
+
+const runButton = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, slash: SlashCommand, line: string, key: string): RenderElement => {
+  const press = async () => {
+    await $.command.run(slash).catch((err: unknown) => $.ui.toast(`Could not run ${line}: ${err instanceof Error ? err.message : String(err)}`))
+  }
+  return glyphButton(el, RUN_GLYPH, <el.Button key={key} variant="primary" label={`run ${line}`} onPress={press} />, key)
+}
+
+const marksTurns = (style: Style): boolean => style.answerMark || style.stepMark
+
+const turnRole = async ($: EngineInterface, style: Style, requestId: string, text: string, isSummary: boolean): Promise<TurnRole | undefined> => {
+  if (!marksTurns(style)) return undefined
+  const drawnAt = await firstDrawn($, requestId)
+  const running = await read($, turnStart)
+  if (running !== null && drawnAt >= running) return undefined
+  return isSummary ? 'step' : roleOf(await read($, turnMarks), text.trim())
+}
+
+const turnStyle = (style: Style, role: TurnRole | undefined): { dimProse?: true } =>
+  style.answerMark && (role === 'first' || role === 'step') ? { dimProse: true } : {}
+
+const turnRule = ({ Box, Text }: ReturnType<EngineInterface['ui']['resolve']>, style: Style, role: TurnRole | undefined, columns: number): RenderElement | null => {
+  if (style.answerMark && role === 'answer') return <Box key="answer" paddingLeft={2}><Text color={style.theme.rule} dimColor={!style.theme.rule}>{'━'.repeat(columns)}</Text></Box>
+  if (style.stepMark && role === 'step') return <Box key="step" paddingLeft={2}><Text dimColor>{'─'.repeat(columns)}</Text></Box>
+  return null
+}
+
+const withTurnRule = (el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, role: TurnRole | undefined, columns: number, message: RenderElement): RenderElement => {
+  const rule = turnRule(el, style, role, columns)
+  return rule ? <el.Box flexDirection="column">{rule}{message}</el.Box> : message
 }
 
 type Typeset = Exclude<Formula, { error: true }> & { tex: string }
@@ -366,10 +408,11 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
     const button = copy(text, key, label)
     return button ? iconButton(el, style, button, key) : null
   }
+  const run: RunButton = (slash, line, key) => runButton($, el, slash, line, key)
   const drawn = drawDiagrams(el, style, blocks, columns - markerRoom(style))
   if (style.handoff) {
     for (const [i, block] of blocks.entries()) {
-      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, { element: drawHandoff(el, style, block.lines, icon, `b${i}`, columns - markerRoom(style)) })
+      if (block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen) drawn.set(i, drawnHandoff(el, style, block.lines, icon, `b${i}`, columns - markerRoom(style), run))
     }
   }
   if (style.drafts) {
@@ -716,6 +759,7 @@ export const register: Register = (on, options) => {
     terminal = await probe($, style, probes)
     void latexEngine($, latex)
     const started = await next(e)
+    if (marksTurns(style)) await readTurnMarks($)
     await $.command
       .register({ name: 'prismantis', description: 'Switch the prismantis theme, pick styles from samples, copy the last reply, or show the demo', argumentHint: '[theme [<name> | random] | setup [<step> [<pick>]] | copy [code] | demo]' })
       .catch(() => undefined)
@@ -769,10 +813,16 @@ export const register: Register = (on, options) => {
       if (style.clock !== 'off') await update($, turnEnds, list => withRecord(list, { durationMs: e.durationMs, at }))
       if (keep) await update($, replies, list => withReply(list, { durationMs: e.durationMs, at, text: e.answer }))
     }
-    return next(e)
+    const done = await next(e)
+    if (marksTurns(style) && e.agentId === undefined) await readTurnMarks($)
+    return done
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (marksTurns(style)) {
+      const now = await $.clock.now()
+      await update($, turnStart, at => at ?? now)
+    }
     if (style.clock !== 'off' && (e.origin.kind === 'composer' || e.origin.kind === 'bridge')) {
       const at = await $.clock.now()
       await update($, sent, list => withRecord(list, { text: promptKey(e.text), at }))
@@ -901,17 +951,21 @@ export const register: Register = (on, options) => {
     const fromFooter = style.replyCopy === 'footer' && e.surface === 'terminal'
     const reply = !fromFooter && (blocks.length > 1 || hasRtl(e.props.text)) ? e.props.text : undefined
     const corner = reply !== undefined && markerRoom(surfaceStyle) > 0
-    return (
+    const role = await turnRole($, style, e.requestId, e.props.text, e.props.isSummary === true)
+    const columns = columnsOf(e.viewport)
+    const drawn: Style = { ...surfaceStyle, ...(narration ? { narration } : {}), ...turnStyle(style, role) }
+    const message = (
       <Box key="msg" flexDirection="row">
         <Box width={2} flexShrink={0}>
           <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
-          {drawMarkdown($, el, narration ? { ...surfaceStyle, narration } : surfaceStyle, blocks, columnsOf(e.viewport), math, pictures, reply, open, { id: e.requestId, press: reach.marks })}
+          {drawMarkdown($, el, drawn, blocks, columns, math, pictures, reply, open, { id: e.requestId, press: reach.marks })}
         </Box>
         {corner ? <Box width={MARK} flexShrink={0} /> : null}
       </Box>
     )
+    return withTurnRule(el, style, role, columns, message)
   })
 
   on('prismantis.markdown', async ($, e, next) => {

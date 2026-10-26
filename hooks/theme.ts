@@ -39,6 +39,9 @@ export type Style = {
   createdStyle: 'preview' | 'card'
   diffToggle: 'card' | 'row'
   editErrors: 'shown' | 'folded'
+  answerMark: boolean
+  stepMark: boolean
+  dimProse?: true
   proseCap: boolean
   proseWidth: number
   editRow: 'path' | 'file'
@@ -132,6 +135,8 @@ export const resolveStyle = (options: PluginOptions): Style => {
     createdStyle: pick(options.createdStyle, ['preview', 'card'] as const, 'preview'),
     diffToggle: pick(options.diffToggle, ['card', 'row'] as const, 'card'),
     editErrors: pick(options.editErrors, ['shown', 'folded'] as const, 'shown'),
+    answerMark: options.answerMark === true,
+    stepMark: options.stepMark === true,
     proseCap: options.proseCap === true,
     proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : 0,
     editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
