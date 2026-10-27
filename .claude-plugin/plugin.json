@@ -380,6 +380,12 @@
       "description": "The column at which capped prose wraps, a whole number from 40 to 200 (fork). Required while proseCap is on: a missing or invalid value stops prismantis loading, with this option named. 65 to 80 is the classic comfortable measure.",
       "default": "90"
     },
+    "toolWidth": {
+      "type": "string",
+      "title": "Tool row width",
+      "description": "With toolStyle chat, tool rows line up on the right edge at this many columns, or at the window's edge when the window is narrower (fork), a whole number from 40 to 400. Empty keeps the window's edge; an invalid value stops prismantis loading, with this option named.",
+      "default": ""
+    },
     "diffToggle": {
       "type": "string",
       "title": "Diff toggle",
@@ -492,6 +498,24 @@
       "type": "string",
       "title": "Copy icon",
       "description": "The glyph of a copy marker: on hand-off and draft cards, beside the turn footer, and on hover markers. A marker with one action copies on click; one with several opens them. One terminal cell wide, e.g. a Nerd Font icon such as . Empty uses ⧉.",
+      "default": ""
+    },
+    "replyIcon": {
+      "type": "string",
+      "title": "Reply icon",
+      "description": "The glyph before the first line of a reply text, what Claude writes to you (fork). One terminal cell wide, e.g. a Nerd Font icon. Empty uses ●.",
+      "default": ""
+    },
+    "thinkingIcon": {
+      "type": "string",
+      "title": "Thinking icon",
+      "description": "The glyph before a summary row, the line Claude Code draws between tool calls in place of Claude's thinking or text (with thinkingDisplay updates, the thinking) (fork). One terminal cell wide. Empty uses ●.",
+      "default": ""
+    },
+    "toolIcon": {
+      "type": "string",
+      "title": "Tool icon",
+      "description": "The status glyph of a finished tool row, colored by how the call ended (fork); a running call keeps ◌. One terminal cell wide, e.g. a Nerd Font icon. Empty uses ●.",
       "default": ""
     },
     "runIcon": {

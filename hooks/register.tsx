@@ -953,7 +953,7 @@ export const register: Register = (on, options) => {
     const message = (
       <Box key="msg" flexDirection="row">
         <Box width={2} flexShrink={0}>
-          <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
+          <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? (e.props.isSummary === true ? style.thinkingIcon : style.replyIcon) : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
           {drawMarkdown($, el, drawn, blocks, columns, math, pictures, reply, open, { id: e.requestId, press: reach.marks })}

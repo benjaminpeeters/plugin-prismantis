@@ -391,6 +391,9 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `copyButtonStyle` | `inline`, `hover`, `icon` (fork: as `hover`, but a marker with one action copies on click) | `inline` |
 | `copyIcon` | the copy marker's glyph, one cell wide (fork), e.g. a Nerd Font icon | `⧉` |
 | `runIcon` | the glyph of a hand-off card's run mark, one cell wide (fork), e.g. a Nerd Font icon | `▷` |
+| `replyIcon` | the glyph before a reply text, one cell wide (fork) | `●` |
+| `thinkingIcon` | the glyph before a summary row, the line Claude Code draws between tool calls in place of Claude's thinking or text, one cell wide (fork) | `●` |
+| `toolIcon` | the status glyph of a finished tool row, one cell wide (fork); a running call keeps `◌` | `●` |
 | `replyCopy` | `message` (a button under each multi-block message), `footer` (fork: terminal only, an icon after the turn footer copying the turn's final answer) | `message` |
 | `turnWord` | a fixed word for the turn footer, drawn without `✻` (fork): `Ran` gives `Ran for 5m 54s` | Claude Code's word |
 | `handoff` | `true`, `false` (fork, see [Hand-off blocks](#hand-off-blocks)) | `true` |
@@ -411,6 +414,7 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `diffBorder` | `true`, `false`: the card's border; with `diffBackgroundColor` gives border, fill, both or neither (fork) | `true` |
 | `proseCap` | `true`, `false`: wrap paragraphs, lists, quotes and alerts at `proseWidth`; headings, code, tables, diagrams, figures and cards keep the whole width (fork) | `false` |
 | `proseWidth` | columns, a whole number from 40 to 200; required while `proseCap` is on, an invalid value stops the mod with a message naming it (fork) | `90` |
+| `toolWidth` | columns, a whole number from 40 to 400: with `toolStyle: chat`, tool rows line up on the right edge at this many columns, or at the window's edge when the window is narrower; an invalid value stops the mod with a message naming it (fork) | empty (the window's edge) |
 | `diffToggle` | `card` (a click on the card toggles it), `row` (fork: a click on the Edit or Write row toggles it; folded, the card is not drawn; open, only its lines) | `card` |
 | `editRow` | `path`, `file` (fork: the folder dim, the file name highlighted, then `+N −M`) | `path` |
 | `answerMark` | `true`, `false`: once a turn ends, a heavy rule `━` across the window above its final answer and its step lines (summary rows included) dimmed, read from the transcript (the last 500 turns); a turn with no step line is left as is, an interrupted turn has no answer, and a line written in more than one turn is never marked (fork) | `false` |

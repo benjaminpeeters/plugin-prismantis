@@ -140,6 +140,17 @@ test('editErrors folded hides a failed edit\'s error behind its row until the ro
   await row.unmount()
 })
 
+test('with file links on, a failed edit row still draws as its toggle, its path as text since a Button holds no Link', { options: { diffToggle: 'row', diffFold: 'folded', editErrors: 'folded' } }, async ($, on) => {
+  engine(on)
+  mock.env(on, { TERM: 'xterm-kitty', HOME: '/home/me', FORCE_HYPERLINK: '1' })
+  claudeAt(on, '2.1.289')
+  const row = await $.ui.mount({ ...failedRow, props: { ...failedRow.props, input: { file_path: '/home/me/app/src/app.ts' } } })
+  expect(await labelled(row, 'show error')).toBeTruthy()
+  expect(await row.find({ type: 'Text', text: / failed$/ })).toBeTruthy()
+  expect(await row.findAll({ type: 'Link' })).toHaveLength(0)
+  await row.unmount()
+})
+
 test('editErrors folded leaves the error shown under toolOutput quiet, whose row cannot open it', { options: { diffToggle: 'row', diffFold: 'folded', editErrors: 'folded', toolOutput: 'quiet' } }, async ($, on) => {
   engine(on)
   inApp(on)

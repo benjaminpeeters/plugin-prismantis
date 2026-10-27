@@ -43,6 +43,7 @@ export type Style = {
   stepMark: boolean
   dimProse?: true
   proseWidth: number | null
+  toolWidth: number | null
   editRow: 'path' | 'file'
   diffBorder: boolean
   pieStyle: 'round' | 'bars'
@@ -67,6 +68,9 @@ export type Style = {
   drafts: boolean
   copyIcon: string
   runIcon: string
+  replyIcon: string
+  thinkingIcon: string
+  toolIcon: string
   turnWord: string
   rtl: 'auto' | Terminal | 'off'
   reorder: boolean
@@ -85,6 +89,10 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 
 export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte|light|dawn/.test(t) && t !== 'mono')
 
+const trimmed = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+
+export const TOOL_ICON = '●'
+
 // diffTint and diffWordTint: a percent, 0 to 60 and 0 to 90, of the diff color in a changed
 // line's background and on top of it under a changed word; anything else keeps the built-in share.
 const tintShare = (value: unknown, max: number): number | undefined => {
@@ -92,13 +100,18 @@ const tintShare = (value: unknown, max: number): number | undefined => {
   return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : undefined
 }
 
-const proseColumns = (value: unknown): number => {
+const columnsFrom = (value: unknown, max: number, rule: string): number => {
   const n = typeof value === 'string' ? Number(value) : value
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < 40 || n > 200) {
-    throw new Error(`prismantis: proseCap is on, so proseWidth must be a whole number of columns from 40 to 200, not ${JSON.stringify(value)}; set it in /config`)
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 40 || n > max) {
+    throw new Error(`prismantis: ${rule}, not ${JSON.stringify(value)}; set it in /config`)
   }
   return n
 }
+
+const proseColumns = (value: unknown): number => columnsFrom(value, 200, 'proseCap is on, so proseWidth must be a whole number of columns from 40 to 200')
+
+const toolColumns = (value: unknown): number | null =>
+  value === undefined || value === '' ? null : columnsFrom(value, 400, 'toolWidth must be empty or a whole number of columns from 40 to 400')
 
 export const pickTheme = (value: unknown, random = Math.random): string => {
   const name = value === 'random' ? RANDOM_THEMES[Math.floor(random() * RANDOM_THEMES.length)] : value
@@ -137,6 +150,7 @@ export const resolveStyle = (options: PluginOptions): Style => {
     answerMark: options.answerMark === true,
     stepMark: options.stepMark === true,
     proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : null,
+    toolWidth: toolColumns(options.toolWidth),
     editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,
@@ -155,9 +169,12 @@ export const resolveStyle = (options: PluginOptions): Style => {
     issueHint: options.issueHint !== false,
     handoff: options.handoff !== false,
     drafts: options.drafts !== false,
-    copyIcon: typeof options.copyIcon === 'string' && options.copyIcon.trim() ? options.copyIcon.trim() : '⧉',
-    runIcon: typeof options.runIcon === 'string' && options.runIcon.trim() ? options.runIcon.trim() : '▷',
-    turnWord: typeof options.turnWord === 'string' ? options.turnWord.trim() : '',
+    copyIcon: trimmed(options.copyIcon) || '⧉',
+    runIcon: trimmed(options.runIcon) || '▷',
+    replyIcon: trimmed(options.replyIcon) || '●',
+    thinkingIcon: trimmed(options.thinkingIcon) || '●',
+    toolIcon: trimmed(options.toolIcon) || TOOL_ICON,
+    turnWord: trimmed(options.turnWord),
     rtl,
     reorder: rtl !== 'auto' && rtl !== 'off',
     shape: rtl === 'auto' || rtl === 'off' ? 'visual' : TERMINALS[rtl],

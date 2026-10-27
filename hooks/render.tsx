@@ -9,6 +9,7 @@ import { CONTROL, displayText, inlineText, isWebLink, nestedBlocks, texText } fr
 import type { Flow } from './rtl'
 import { LTR_BLANK, ROW_MARK, ROW_MARK_TEXT, WALL, codeVisual, commentTail, commentVisual, containsRtl, flow, hasRtl, heldCell, listMarker, opensLatin, terminalLine } from './rtl'
 import type { Style, Theme } from './theme'
+import { TOOL_ICON } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
 
@@ -1414,15 +1415,17 @@ const toolDim = (style: Style) => style.toolStyle !== "classic"
 const toolGutter = ({ Box, Text }: ElementTable, style: Style, color: string | undefined, running: boolean) =>
   style.toolStyle.startsWith("tree")
     ? <Box width={4} flexShrink={0}><Text color={color}>{'  ⎿ '}</Text></Box>
-    : <Box width={2} flexShrink={0}><Text color={color}>{running ? '◌' : '●'}</Text></Box>
+    : <Box width={2} flexShrink={0}><Text color={color}>{running ? '◌' : style.toolIcon}</Text></Box>
 
-const toolLayout = (el: ElementTable, style: Style, columns: number, label: string, color: string | undefined, running: boolean, text: RenderElement) => {
+const toolLayout = (el: ElementTable, style: Style, columns: number | undefined, label: string, color: string | undefined, running: boolean, text: RenderElement) => {
   const { Box, Text } = el
   if (style.toolStyle !== "chat") return <Box flexDirection="row">{toolGutter(el, style, color, running)}{text}</Box>
-  const w = Math.min(width(label) + 2, Math.max(20, Math.floor(columns * 0.6)))
+  const span = columns === undefined ? style.toolWidth ?? 100 : Math.min(columns, style.toolWidth ?? Infinity)
+  const tail = style.toolIcon === TOOL_ICON ? '' : ' '
+  const w = Math.min(width(label) + 2 + tail.length, Math.max(20, Math.floor(span * 0.6)))
   return (
-    <Box flexDirection="row" justifyContent="flex-end" width="100%">
-      <Box width={w} flexDirection="row">{text}<Text color={color}>{running ? " ◌" : " ●"}</Text></Box>
+    <Box flexDirection="row" justifyContent="flex-end" width={columns === undefined ? style.toolWidth ?? '100%' : style.toolWidth === null ? '100%' : span}>
+      <Box width={w} flexDirection="row">{text}<Text color={color}>{running ? ` ◌${tail}` : ` ${style.toolIcon}${tail}`}</Text></Box>
     </Box>
   )
 }
@@ -2304,7 +2307,7 @@ const callPieces = (call: ToolRow, style: Style): LinkPiece[] => {
   return [{ text: `${verb} ` }, { text: shortTarget(style, target), path }, ...(args ? [{ text: ` ${args}` }] : [])]
 }
 
-const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number): RenderElement => {
+const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number | undefined): RenderElement => {
   const t = style.theme
   const dot = statusColor(t, row)
   const pieces = callPieces(row, style)
@@ -2319,7 +2322,7 @@ const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: num
 
 export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) => RenderElement; lit: TextHoverProps }
 
-export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns = 100, toggle?: RowToggle): RenderElement => {
+export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns?: number, toggle?: RowToggle): RenderElement => {
   if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns)
   const { Text } = el
   const t = style.theme
@@ -2338,7 +2341,7 @@ export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, colu
       <Text wrap="truncate-end" dimColor={toolDim(style)} {...hoverProps}>
         <Text bold={!toolDim(style)} dimColor={toolDim(style)} {...hoverProps}>{verb}</Text>
         {target === undefined ? null : <Text {...hoverProps}> </Text>}
-        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toolPath(row.tool, found.path) }])}</Text>}
+        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toggle ? undefined : toolPath(row.tool, found.path) }])}</Text>}
         {row.isInterrupted ? <Text dimColor {...hoverProps}> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag} {...hoverProps}> failed</Text> : null}
       </Text>
   )
@@ -2656,7 +2659,7 @@ const commandLine = (el: ElementTable, style: Style, row: ToolRow, line: string,
   ]
   return cells.map(({ text, cell }, k) => (
     <Box key={`c${i}.${k}`} flexDirection="row">
-      <Box width={COMMAND_LEAD} flexShrink={0}>{i === 0 && k === 0 ? <Text color={statusColor(style.theme, row)}>{row.isRunning ? '◌' : '●'}</Text> : <Text>{heldLabel(style, '  ', text)}</Text>}</Box>
+      <Box width={COMMAND_LEAD} flexShrink={0}>{i === 0 && k === 0 ? <Text color={statusColor(style.theme, row)}>{row.isRunning ? '◌' : style.toolIcon}</Text> : <Text>{heldLabel(style, '  ', text)}</Text>}</Box>
       <Text>{cell}</Text>
     </Box>
   ))
@@ -2709,7 +2712,7 @@ export const groupSummary = (calls: readonly { tool: string }[]): string => {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-const quietToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow & { output?: unknown })[], isActive: boolean, columns: number): RenderElement => {
+const quietToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow & { output?: unknown })[], isActive: boolean, columns: number | undefined): RenderElement => {
   const t = style.theme
   const failed = calls.filter(c => c.isErrored)
   const running = isActive && calls.some(c => c.isRunning)
@@ -2732,7 +2735,7 @@ const quietToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow
   )
 }
 
-export const renderToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow & { output?: unknown })[], isActive: boolean, columns = 100): RenderElement => {
+export const renderToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow & { output?: unknown })[], isActive: boolean, columns?: number): RenderElement => {
   if (style.toolOutput === 'quiet') return quietToolGroup(el, style, calls, isActive, columns)
   const { Text } = el
   const t = style.theme
