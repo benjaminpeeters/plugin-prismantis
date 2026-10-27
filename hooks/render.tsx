@@ -1448,17 +1448,29 @@ const chatColumn = (style: Style, columns: number | undefined): number => Math.m
 
 const asksLeft = (style: Style, tool: string | undefined): boolean => style.toolStyle === 'chat' && isAsk(tool) && style.askAlign === 'left'
 
+export const columnsOf = (viewport?: { columns?: number | undefined }): number => Math.max(20, (viewport?.columns ?? 100) - 4)
+
+const stepRule = ({ Box, Text }: ElementTable, columns: number): RenderElement => (
+  <Box key="step" paddingLeft={2}><Text dimColor>{'─'.repeat(columns)}</Text></Box>
+)
+
+export const withStepRule = (el: ElementTable, isStepped: boolean, columns: number, row: RenderElement): RenderElement =>
+  isStepped ? <el.Box flexDirection="column">{stepRule(el, columns)}{row}</el.Box> : row
+
 const rowIcon = (style: Style, tool: string | undefined): string => (isAsk(tool) ? style.askIcon : style.toolIcon)
 
-const toolLayout = (el: ElementTable, style: Style, columns: number | undefined, label: string, color: string | undefined, running: boolean, tool: string | undefined, text: RenderElement) => {
+const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | undefined, label: string, color: string | undefined, running: boolean, tool: string | undefined, text: RenderElement) => {
   const { Box, Text } = el
   const icon = rowIcon(style, tool)
-  if (asksLeft(style, tool)) return <Box flexDirection="row">{toolGutter(el, style, color, running, icon)}<Box flexShrink={1}>{text}</Box></Box>
+  if (asksLeft(style, tool)) {
+    const row = <Box key="row" flexDirection="row">{toolGutter(el, style, color, running, icon)}<Box flexShrink={1}>{text}</Box></Box>
+    return withStepRule(el, style.stepMark, columnsOf({ columns: viewportColumns }), row)
+  }
   if (style.toolStyle !== "chat") return <Box flexDirection="row">{toolGutter(el, style, color, running, icon)}{text}</Box>
   const tail = PRIVATE_USE.test(icon) ? ' ' : ''
-  const w = Math.min(width(label) + 2 + tail.length, chatColumn(style, columns))
+  const w = Math.min(width(label) + 2 + tail.length, chatColumn(style, viewportColumns))
   return (
-    <Box flexDirection="row" justifyContent="flex-end" width={chatWidth(style, columns)}>
+    <Box flexDirection="row" justifyContent="flex-end" width={chatWidth(style, viewportColumns)}>
       <Box width={w} flexDirection="row">{text}<Text color={color}>{running ? ` ◌${tail}` : ` ${icon}${tail}`}</Text></Box>
     </Box>
   )

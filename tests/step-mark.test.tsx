@@ -102,6 +102,13 @@ for (const surface of ['terminal', 'desktop'] as const) {
     surface,
   })
   const rule = { type: 'Text', text: /^─+$/ } as const
+  const ask = (id: string) => ({
+    plugin: 'prismantis',
+    component: 'ToolUse' as const,
+    props: { tool_use_id: id, tool: 'AskUserQuestion', input: { questions: [] }, isRunning: false, isErrored: false, isInterrupted: false },
+    viewport: { columns: 100, rows: 20 },
+    surface,
+  })
 
   test(`stepMark on ${surface}: a row drawn in a running turn gets its rule from the turn's tool calls, and keeps it when the turn ends`, { options: { stepMark: true } }, async ($, on) => {
     const clock = await start($, on)
@@ -186,5 +193,26 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await summary.find(rule)).toBeUndefined()
     expect((await summary.find({ type: 'Text', text: /^Weighing the glyphs/ }))?.props.dimColor).toBeUndefined()
     await summary.unmount()
+  })
+
+  test(`stepMark on ${surface} draws a thin rule above a question row with askAlign left`, { options: { stepMark: true } }, async ($, on) => {
+    await start($, on)
+    const left = await $.ui.mount(ask('q-1'))
+    expect((await left.find(rule))?.props.dimColor).toBe(true)
+    await left.unmount()
+  })
+
+  test(`stepMark on ${surface} draws no rule above a question row with askAlign right, which sits with the tool rows`, { options: { stepMark: true, askAlign: 'right' } }, async ($, on) => {
+    await start($, on)
+    const ui = await $.ui.mount(ask('q-2'))
+    expect(await ui.find(rule)).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test(`stepMark off on ${surface} draws no rule above a question row`, async ($, on) => {
+    await start($, on)
+    const ui = await $.ui.mount(ask('q-3'))
+    expect(await ui.find(rule)).toBeUndefined()
+    await ui.unmount()
   })
 }

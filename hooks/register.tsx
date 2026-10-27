@@ -19,7 +19,7 @@ import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turn
 import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import { MARK, callEnding, isAsk, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import { MARK, callEnding, columnsOf, isAsk, withStepRule, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -64,8 +64,6 @@ const expandedCalls = new Set<string>()
 const readOnlyCalls = new Set<string>()
 const askInputs = new Map<string, unknown>()
 const interruptedCalls = new Set<string>()
-
-const columnsOf = (viewport?: { columns?: number }) => Math.max(20, (viewport?.columns ?? 100) - 4)
 
 const formulas = atom({ plugin: 'prismantis', key: 'formulas' } as const, {})
 const latexDir = atom({ plugin: 'prismantis', key: 'dir' } as const, '')
@@ -112,9 +110,6 @@ const isStepRow = async ($: EngineInterface, style: Style, requestId: string, te
   if (isSummary) return true
   return isStep(await read($, turnWindows), await read($, turnSteps), await firstDrawn($, requestId), text.trim())
 }
-
-const withStepRule = ({ Box, Text }: ReturnType<EngineInterface['ui']['resolve']>, isStepped: boolean, columns: number, message: RenderElement): RenderElement =>
-  isStepped ? <Box flexDirection="column"><Box key="step" paddingLeft={2}><Text dimColor>{'─'.repeat(columns)}</Text></Box>{message}</Box> : message
 
 type Typeset = Exclude<Formula, { error: true }> & { tex: string }
 

@@ -402,7 +402,7 @@
     "stepMark": {
       "type": "boolean",
       "title": "Mark each step",
-      "description": "Draw a dim thin rule across the window above each text Claude writes after a tool call in its turn, the final answer included, so every step (a short line and the tool rows after it) reads as its own block; every summary row Claude Code draws in place of text gets one too and draws dim, as its place in the turn is unknown (fork). A row's mark is set when it first draws, live while the turn runs, and never changes. Rows from before this session are read from the transcript, the last 500 turns, where a line that was a step in one turn and not in another is never marked.",
+      "description": "Draw a dim thin rule across the window above each text Claude writes after a tool call in its turn, the final answer included, so every step (a short line and the tool rows after it) reads as its own block; every summary row Claude Code draws in place of text gets one too and draws dim, as its place in the turn is unknown; an AskUserQuestion row with toolStyle chat and askAlign left, which sits with the replies, gets one too (fork). A row's mark is set when it first draws, live while the turn runs, and never changes. Rows from before this session are read from the transcript, the last 500 turns, where a line that was a step in one turn and not in another is never marked.",
       "default": false
     },
     "editErrors": {
