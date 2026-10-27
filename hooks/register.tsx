@@ -16,9 +16,10 @@ import type { RunButton, SlashCommand } from './handoff'
 import { cardGlyph, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
 import type { TurnWindow } from '../types'
 import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turns'
+import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
-import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
-import { MARK, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import type { CopyButton, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
+import { MARK, callEnding, isAsk, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -61,6 +62,8 @@ const applyRtl = async ($: EngineInterface, style: Style): Promise<Terminal | nu
 
 const expandedCalls = new Set<string>()
 const readOnlyCalls = new Set<string>()
+const askInputs = new Map<string, unknown>()
+const interruptedCalls = new Set<string>()
 
 const columnsOf = (viewport?: { columns?: number }) => Math.max(20, (viewport?.columns ?? 100) - 4)
 
@@ -370,6 +373,10 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
 
 const rowToggles = (style: Style): boolean => style.diffToggle === 'row' && style.diffFold !== 'none'
 
+const RESULT_LOOK: FoldLook = { label: 'show result', close: 'hide result', whole: true }
+
+const foldsResult = (style: Style, tool: string, failed: boolean): boolean => style.toolResults === 'folded' && resultAside(style, tool) && !failed
+
 const foldsError = (style: Style, tool: string): boolean => (tool === 'Edit' || tool === 'Write') && style.editErrors === 'folded' && style.toolOutput !== 'quiet' && rowToggles(style)
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, math: Map<number, Typeset> = new Map(), pictures: Map<number, Picture> = new Map(), reply?: string, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
@@ -641,11 +648,45 @@ const hintsFor = (style: Style, latex: LatexSession, nth: number): string[] => [
 
 const localeOf = async ($: EngineInterface, asked?: string): Promise<string> => asked ?? (await $.env.get('LC_ALL').catch(() => undefined)) ?? (await $.env.get('LANG').catch(() => undefined)) ?? ''
 
+type RenderLog = { lines: string[]; seen: Set<string>; flushing: boolean; failed: boolean }
+
+const flushRenderLog = async ($: EngineInterface, log: RenderLog): Promise<void> => {
+  log.flushing = false
+  if (log.failed) return
+  let path = '~/.claude/debug/prismantis-render-<session id>.log'
+  try {
+    const home = await $.env.get('HOME')
+    if (!home) throw new Error('HOME is not set')
+    path = `${home}/.claude/debug/prismantis-render-${await $.session.id()}.log`
+    await $.fs.write(path, `${log.lines.join('\n')}\n`)
+  } catch (err: unknown) {
+    log.failed = true
+    $.ui.toast(`prismantis renderLog could not write ${path}, so it stops: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+const logRender = async ($: EngineInterface, log: RenderLog, line: string): Promise<void> => {
+  if (log.failed || log.seen.has(line)) return
+  rememberCall(log.seen, line, 20000)
+  log.lines.push(`${new Date(await $.clock.now()).toISOString()} ${line}`)
+  if (log.lines.length > 3000) log.lines.splice(0, log.lines.length - 3000)
+  if (log.flushing) return
+  log.flushing = true
+  $.clock.after(500, () => void flushRenderLog($, log))
+}
+
 export const register: Register = (on, options) => {
   on('engine.create', async (_$, e, next) => ({ ...(await next(e)), prismantis: { markdown: async () => undefined } }))
   if (options.enabled === false) return
   const firstTheme = pickTheme(options.theme)
   const style = resolveStyle({ ...options, theme: firstTheme })
+  if (style.renderLog) {
+    const log: RenderLog = { lines: [], seen: new Set(), flushing: false, failed: false }
+    on('ui.render', async ($, e, next) => {
+      await logRender($, log, renderLine(e.component, e.surface, e.requestId, e.props))
+      return next(e)
+    })
+  }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string, cache = parsed, limit?: number) => remember(cache, text, () => {
     const blocks = parse(text, { numbers: style.highlightNumbers, paths: style.highlightPaths })
@@ -687,6 +728,12 @@ export const register: Register = (on, options) => {
       return renderToolGroup($.ui.resolve(e), forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), e.props.calls, e.props.isActive, e.viewport?.columns)
     })
     on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+      if (isAsk(e.props.tool)) {
+        askInputs.delete(e.props.tool_use_id)
+        askInputs.set(e.props.tool_use_id, e.props.input)
+        if (askInputs.size > 200) askInputs.delete(askInputs.keys().next().value!)
+      }
+      if (e.props.isInterrupted) rememberCall(interruptedCalls, e.props.tool_use_id)
       await locate($, style)
       noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
       if (quiet && isReadOnlyCall(e.props.tool, e.props.input)) rememberCall(readOnlyCalls, e.props.tool_use_id)
@@ -695,7 +742,9 @@ export const register: Register = (on, options) => {
         const edit = e.props.tool === 'Edit' || e.props.tool === 'Write'
         const foldable = edit && (!e.props.isErrored || foldsError(style, e.props.tool))
         const stats = edit && !e.props.isErrored && style.editRow === 'file' ? fileStats(e.props.output) : undefined
-        const toggle = foldable && rowToggles(style) ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', foldLook(style, e.props.isErrored ? ' error' : ' diff')) : null
+        const folds = foldsResult(style, e.props.tool, callEnding(e.props) === 'failed') && !e.props.isExpanded && !e.props.isRunning && !readOnlyCalls.has(e.props.tool_use_id)
+        const look = folds ? RESULT_LOOK : foldLook(style, e.props.isErrored ? ' error' : ' diff')
+        const toggle = (foldable && rowToggles(style)) || folds ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', look) : null
         const lit = { scope: `row:${instanceKey(e.props.tool_use_id)}`, dimColor: false }
         const row = toggle?.around ? { around: toggle.around, lit } : undefined
         return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, row)
@@ -722,6 +771,17 @@ export const register: Register = (on, options) => {
         const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
         const drawn = renderBashEdits(el, forSurface(cards(), e.surface, await linkReach($, probes, style)), edits, folder($, el, await read($, unfolded), (await linkReach($, probes, style)).marks), e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
         return above === null ? drawn : <el.Box flexDirection="column">{above}{drawn}</el.Box>
+      }
+      if (resultAside(style, e.props.tool) && !readOnlyCalls.has(e.props.tool_use_id)) {
+        const el = $.ui.resolve(e)
+        const ending = callEnding({ ...e.props, isInterrupted: interruptedCalls.has(e.props.tool_use_id) })
+        const declined = ending === 'declined'
+        const folded = foldsResult(style, e.props.tool, ending === 'failed') && !e.props.isExpanded && !expandedCalls.has(e.props.tool_use_id) && !(await read($, unfolded)).includes(`card:${e.props.tool_use_id}`)
+        if (folded) return <el.Box />
+        const asked = isAsk(e.props.tool) && ending !== 'failed' ? renderAnswers(el, fit(e.viewport), askInputs.get(e.props.tool_use_id), e.props.output, declined, e.viewport?.columns) : undefined
+        if (asked) return asked
+        const failure = quiet && e.props.isErrored ? renderFailure(el, fit(e.viewport), e.props.output) : undefined
+        return renderResultAside(el, fit(e.viewport), e.viewport?.columns, e.props.tool, failure ?? await next(e))
       }
       if (!quiet) return next(e)
       await locate($, style)
@@ -901,6 +961,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const kind = e.props.origin.kind
     const own = kind === 'composer' || kind === 'bridge' || (kind === 'unclassified' && !e.props.from && !e.props.task)
+    if (kind === 'task-notification' && style.toolStyle === 'chat' && !e.props.isExpanded) return renderTaskRow($.ui.resolve(e), fit(e.viewport), e.props.text, e.props.task, e.viewport?.columns)
     if (!own) return next(e)
     const at = style.clock === 'off' ? undefined : sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now(), style.clock)

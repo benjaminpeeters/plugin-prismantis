@@ -4,11 +4,11 @@ import { FORK_OPTIONS, resolveStyle } from '../hooks/theme'
 import type { ForkOption } from '../hooks/theme'
 import { DEFAULTS } from './manifest-defaults'
 
-const ICONS = ['copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'runIcon'] as const satisfies readonly ForkOption[]
+const ICONS = ['copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'runIcon'] as const satisfies readonly ForkOption[]
 
 test('the manifest defaults resolve, the icons included', () => {
   const style = resolveStyle(DEFAULTS)
-  expect(ICONS.map(key => style[key])).toEqual(['⧉', '●', '●', '●', '▷'])
+  expect(ICONS.map(key => style[key])).toEqual(['⧉', '●', '●', '●', '?', '▷'])
 })
 
 test('a fork option left out fails loudly, naming it, as only the manifest holds its default', () => {

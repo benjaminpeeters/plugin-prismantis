@@ -240,6 +240,8 @@ Collapsed groups draw one line too: `Ran 3 commands, read 2 files · last: npm t
 | dimmed on the right, capped at 60% of the width | tucked under the sentence with `⎿`, dimmed | `tree-dim` with one-line sentences in bold | bold verb and status dot, full brightness |
 | ![chat](docs/tools/chat.png) | ![tree-dim](docs/tools/tree-dim.png) | ![tree-bold](docs/tools/tree-bold.png) | ![classic](docs/tools/classic.png) |
 
+With `chat`, a background task's notification (`Agent "…" finished · 2m 9s`) draws as a tool row on the right too, its glyph colored by how the task ended (fork).
+
 `toolOutput: quiet` shows what Claude did, not what it read: reads, searches and read-only shell commands draw one plain row like `Read src/report.py lines 1–10` and nothing under it. Edits keep their diff and failures show their real error; the full rules are in [docs/tool-output.md](docs/tool-output.md).
 
 ![quiet: rows say what was read, nothing drawn under reads](docs/tools/quiet.png)
@@ -373,7 +375,7 @@ Open `/config` and look for the **prismantis** rows, or set values in `~/.claude
 
 Options sit under `options`, keyed by the plugin's install name. Project settings are not read for plugin options.
 
-The options only the fork has take their defaults from `plugin.json` alone, and a missing or invalid value stops the mod with a message naming the option: the icons (`copyIcon`, `runIcon`, `replyIcon`, `thinkingIcon`, `toolIcon`, each one glyph one terminal cell wide), `turnWord`, `replyCopy`, `handoff`, `drafts`, the diff options `diffWidth`, `diffFold`, `diffTint`, `diffWordTint`, `diffToggle`, `diffBorder`, `diffPath`, `createdStyle`, `editErrors` and `editRow`, and `proseCap`, `proseWidth` (while `proseCap` is on), `toolWidth` and `stepMark`. The options shared with upstream, `copyButtonStyle` among them, and every `<token>Color`, the fork's own colors included, keep upstream's reading: an unknown value is ignored.
+The options only the fork has take their defaults from `plugin.json` alone, and a missing or invalid value stops the mod with a message naming the option: the icons (`copyIcon`, `runIcon`, `replyIcon`, `thinkingIcon`, `toolIcon`, `askIcon`, each one glyph one terminal cell wide), `askAlign`, `toolResults`, `renderLog`, `turnWord`, `replyCopy`, `handoff`, `drafts`, the diff options `diffWidth`, `diffFold`, `diffTint`, `diffWordTint`, `diffToggle`, `diffBorder`, `diffPath`, `createdStyle`, `editErrors` and `editRow`, and `proseCap`, `proseWidth` (while `proseCap` is on), `toolWidth` and `stepMark`. The options shared with upstream, `copyButtonStyle` among them, and every `<token>Color`, the fork's own colors included, keep upstream's reading: an unknown value is ignored.
 
 | Option | Values | Default |
 | --- | --- | --- |
@@ -396,6 +398,10 @@ The options only the fork has take their defaults from `plugin.json` alone, and 
 | `replyIcon` | the glyph before a reply text, one cell wide (fork) | `●` |
 | `thinkingIcon` | the glyph before a summary row, the line Claude Code draws between tool calls in place of Claude's thinking or text, one cell wide (fork) | `●` |
 | `toolIcon` | the status glyph of a finished tool row, one cell wide (fork); a running call keeps `◌` | `●` |
+| `askIcon` | the status glyph of an AskUserQuestion row in place of `toolIcon`, one cell wide (fork) | `?` |
+| `askAlign` | with `toolStyle` chat, where an AskUserQuestion row and its answers sit: `left` (with Claude's replies, its glyph in the reply gutter) or `right` (with the other tool rows) (fork) | `left` |
+| `toolResults` | with `toolStyle` chat, the result lines Claude Code draws under a tool row (a loaded skill, a backgrounded agent, the answers to a question; not shell output or edit diffs): `folded` (hidden until the row is clicked or the transcript is expanded with ctrl+o) or `shown`, either way drawn as a block on the right under the row, except a question's answers, which follow `askAlign`; a failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest, and an interrupted call's result drawn before its row shows, as its interruption is not known yet (fork) | `shown` |
+| `renderLog` | `true`, `false`: for diagnosing a drawing, one line per distinct element Claude Code asks to draw (component, tool, origin, flags, prop names, start of the text) in `~/.claude/debug/prismantis-render-<session id>.log`, the last 3000 lines; a failed write shows a toast naming the path and stops the log (fork) | `false` |
 | `replyCopy` | `message` (a button under each multi-block message), `footer` (fork: terminal only, an icon after the turn footer copying the turn's final answer) | `message` |
 | `turnWord` | a fixed word for the turn footer, drawn without `✻` (fork): `Ran` gives `Ran for 5m 54s` | Claude Code's word |
 | `handoff` | `true`, `false` (fork, see [Hand-off blocks](#hand-off-blocks)) | `true` |
@@ -453,6 +459,7 @@ A color is hex (`#a6e3a1`, `#fc0`), `rgb(166,227,161)`, `ansi256(114)` or a name
 | `createdBackground` | a created file's card background with `createdStyle: card` (fork; unset: `diffBackground`) |
 | `turnDuration` | the whole `✻ Worked for 8s · 14:32` line (unset: words in `codeComment`, duration and time in `number`) |
 | `replyBullet` | the `●` before each reply (unset: `accent`) |
+| `ask` | an AskUserQuestion row's glyph (unless the call failed), its name with `askAlign` left, and its questions' headers; picked answers keep `number` (unset: `accent`; fork) |
 | `heading1` … `heading6` | one heading level each (unset: `heading` for H1 and H2, `accent` for H3+) |
 
 ## Troubleshooting

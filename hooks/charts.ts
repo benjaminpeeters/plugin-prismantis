@@ -1,4 +1,4 @@
-import { graphemes, width } from './render'
+import { fitText, width } from './render'
 
 const DAY = 86400000
 const STEPS = [1, 5, 15, 30, 60, 120, 360, 720, 1440, 2880, 10080, 20160, 43200, 129600, 525600].map(m => m * 60000)
@@ -7,16 +7,6 @@ const TAGS = /^(done|active|crit|milestone)$/i
 const IGNORED = /^(dateformat|axisformat|tickinterval|excludes|includes|todaymarker|weekday|weekend|inclusiveenddates|topaxis|displaymode|acctitle|accdescr|click)\b/i
 
 const body = (source: string) => source.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('%%'))
-
-const fit = (label: string, max: number) => {
-  if (width(label) <= max) return label
-  let out = ''
-  for (const g of graphemes(label)) {
-    if (width(out + g) > max - 1) break
-    out += g
-  }
-  return `${out.trimEnd()}…`
-}
 
 const pad = (text: string, size: number) => text + ' '.repeat(Math.max(0, size - width(text)))
 
@@ -97,7 +87,7 @@ const pieLines = (lines: string[], heading: string | undefined, data: boolean): 
       const slice = /^"([^"]*)"\s*:\s*([\d.]+)$/.exec(line)
       const value = Number(slice?.[2])
       if (!slice || !Number.isFinite(value)) return null
-      slices.push({ label: fit(slice[1]!, 20), text: slice[2]!, value })
+      slices.push({ label: fitText(slice[1]!, 20), text: slice[2]!, value })
     }
   }
   return slices.reduce((sum, s) => sum + s.value, 0) > 0 ? { title, showData, slices } : null
@@ -161,7 +151,7 @@ export const ganttText = (source: string, ascii: boolean, columns: number): stri
     const named = /^title\s+(.*)$/i.exec(line)
     const section = /^section\s+(.*)$/i.exec(line)
     if (named) title = named[1]
-    else if (section) rows.push({ section: fit(section[1]!.trim(), 24) })
+    else if (section) rows.push({ section: fitText(section[1]!.trim(), 24) })
     else if (!IGNORED.test(line)) {
       const colon = line.indexOf(':')
       if (colon < 1) return null
@@ -179,7 +169,7 @@ export const ganttText = (source: string, ascii: boolean, columns: number): stri
       if (end === undefined || end < start) return null
       if (id) ends.set(id, { start, end })
       previous = end
-      rows.push({ name: fit(line.slice(0, colon).trim(), 22), start, end, milestone })
+      rows.push({ name: fitText(line.slice(0, colon).trim(), 22), start, end, milestone })
     }
   }
   const tasks = rows.flatMap(r => ('name' in r ? [r] : []))

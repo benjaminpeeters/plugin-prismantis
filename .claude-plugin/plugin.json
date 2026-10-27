@@ -293,6 +293,12 @@
       "description": "Color for the ● before each reply. Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
       "default": ""
     },
+    "askColor": {
+      "type": "string",
+      "title": "Question color",
+      "description": "Color for an AskUserQuestion row's glyph (unless the call failed), its name (with askAlign left) and the headers of its questions (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color; the picked answers keep the number color.",
+      "default": ""
+    },
     "heading1Color": {
       "type": "string",
       "title": "H1",
@@ -511,6 +517,32 @@
       "title": "Tool icon",
       "description": "The status glyph of a finished tool row, colored by how the call ended (fork); a running call keeps ◌. One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
       "default": "●"
+    },
+    "askIcon": {
+      "type": "string",
+      "title": "Question icon",
+      "description": "The glyph of an AskUserQuestion row, in place of toolIcon, drawn in askColor unless the call failed, a declined question keeping it (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "?"
+    },
+    "askAlign": {
+      "type": "string",
+      "title": "Question side",
+      "description": "With toolStyle chat, where an AskUserQuestion row and its answers sit (fork). left: with Claude's replies, the row's glyph in the reply gutter and its name in askColor, since a question talks to you like a reply does. right: with the other tool rows.",
+      "default": "left",
+      "options": ["left", "right"]
+    },
+    "toolResults": {
+      "type": "string",
+      "title": "Tool results",
+      "description": "With toolStyle chat, the result lines Claude Code draws under a tool row (a loaded skill, a backgrounded agent, the answers to a question), not shell output or edit diffs (fork). folded: hidden until the row is clicked or the transcript is expanded (ctrl+o), then drawn as a block on the right under the row. shown: always drawn there. A question's answers follow askAlign instead, so with askAlign left they sit under their row on the left. A failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest; an interrupted call's result drawn before its row shows, as its interruption is not known yet.",
+      "default": "shown",
+      "options": ["folded", "shown"]
+    },
+    "renderLog": {
+      "type": "boolean",
+      "title": "Render log",
+      "description": "For diagnosing a drawing (fork): write one line per distinct transcript element Claude Code asks to draw (its component, tool, origin, flags, prop names and the start of its text) to ~/.claude/debug/prismantis-render-<session id>.log, the last 3000 lines, rewritten half a second after a new one. A failed write shows a toast naming the path and stops the log.",
+      "default": false
     },
     "runIcon": {
       "type": "string",

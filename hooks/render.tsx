@@ -29,6 +29,16 @@ export const cells = (s: string): string[] => (/^[ -~]*$/.test(s) ? [...s] : gra
 
 const ZERO = /^[\p{M}\p{Default_Ignorable_Code_Point}]+$/u
 
+export const fitText = (label: string, max: number): string => {
+  if (width(label) <= max) return label
+  let out = ''
+  for (const g of graphemes(label)) {
+    if (width(out + g) > max - 1) break
+    out += g
+  }
+  return `${out.trimEnd()}…`
+}
+
 export const width = (s: string): number =>
   /^[ -~]*$/.test(s) ? s.length
   : s.length === 1 ? (ZERO.test(s) ? 0 : WIDE.test(s) ? 2 : 1)
@@ -1378,7 +1388,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   return out
 }
 
-export type ToolRow = { tool: string; input: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats }
+export type ToolRow = { tool: string; input: unknown; output?: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats }
 
 export type FileStats = { added: number; removed: number }
 
@@ -1395,6 +1405,8 @@ const VERBS: Record<string, string> = {
   Grep: 'Searched', Glob: 'Listed', WebFetch: 'Fetched', WebSearch: 'Searched the web for', Agent: 'Delegated', Task: 'Delegated',
 }
 
+export const record = (value: unknown): Record<string, unknown> => (value !== null && typeof value === 'object' ? value as Record<string, unknown> : {})
+
 const field = (input: unknown, ...keys: string[]): string | undefined => {
   if (input === null || typeof input !== 'object') return undefined
   for (const k of keys) {
@@ -1406,29 +1418,213 @@ const field = (input: unknown, ...keys: string[]): string | undefined => {
 
 const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description']
 
+const ASK_TOOL = 'AskUserQuestion'
+
+export const isAsk = (tool: string | undefined): boolean => tool === ASK_TOOL
+
+const askColor = (t: Theme): string | undefined => t.ask ?? t.accent
+
+const isDecline = (output: unknown): boolean => typeof output === 'string' && /user rejected tool use|doesn't want to proceed/i.test(output)
+
 const statusColor = (t: Theme, row: ToolRow) =>
-  row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number
+  isAsk(row.tool) && callEnding(row) !== 'failed' ? askColor(t) : row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number
 
 const toolDim = (style: Style) => style.toolStyle !== "classic"
 
-const toolGutter = ({ Box, Text }: ElementTable, style: Style, color: string | undefined, running: boolean) =>
+const toolGutter = ({ Box, Text }: ElementTable, style: Style, color: string | undefined, running: boolean, icon: string) =>
   style.toolStyle.startsWith("tree")
     ? <Box width={4} flexShrink={0}><Text color={color}>{'  ⎿ '}</Text></Box>
-    : <Box width={2} flexShrink={0}><Text color={color}>{running ? '◌' : style.toolIcon}</Text></Box>
+    : <Box width={2} flexShrink={0}><Text color={color}>{running ? '◌' : icon}</Text></Box>
 
 const PRIVATE_USE = /\p{Co}/u
 
-const toolLayout = (el: ElementTable, style: Style, columns: number | undefined, label: string, color: string | undefined, running: boolean, text: RenderElement) => {
+const chatSpan = (style: Style, columns: number | undefined): number =>
+  columns === undefined ? style.toolWidth ?? 100 : Math.min(columns, style.toolWidth ?? Infinity)
+
+const chatWidth = (style: Style, columns: number | undefined): number | '100%' =>
+  columns === undefined ? style.toolWidth ?? '100%' : style.toolWidth === null ? '100%' : chatSpan(style, columns)
+
+const chatColumn = (style: Style, columns: number | undefined): number => Math.max(20, Math.floor(chatSpan(style, columns) * 0.6))
+
+const asksLeft = (style: Style, tool: string | undefined): boolean => style.toolStyle === 'chat' && isAsk(tool) && style.askAlign === 'left'
+
+const rowIcon = (style: Style, tool: string | undefined): string => (isAsk(tool) ? style.askIcon : style.toolIcon)
+
+const toolLayout = (el: ElementTable, style: Style, columns: number | undefined, label: string, color: string | undefined, running: boolean, tool: string | undefined, text: RenderElement) => {
   const { Box, Text } = el
-  if (style.toolStyle !== "chat") return <Box flexDirection="row">{toolGutter(el, style, color, running)}{text}</Box>
-  const span = columns === undefined ? style.toolWidth ?? 100 : Math.min(columns, style.toolWidth ?? Infinity)
-  const tail = PRIVATE_USE.test(style.toolIcon) ? ' ' : ''
-  const w = Math.min(width(label) + 2 + tail.length, Math.max(20, Math.floor(span * 0.6)))
+  const icon = rowIcon(style, tool)
+  if (asksLeft(style, tool)) return <Box flexDirection="row">{toolGutter(el, style, color, running, icon)}<Box flexShrink={1}>{text}</Box></Box>
+  if (style.toolStyle !== "chat") return <Box flexDirection="row">{toolGutter(el, style, color, running, icon)}{text}</Box>
+  const tail = PRIVATE_USE.test(icon) ? ' ' : ''
+  const w = Math.min(width(label) + 2 + tail.length, chatColumn(style, columns))
   return (
-    <Box flexDirection="row" justifyContent="flex-end" width={columns === undefined ? style.toolWidth ?? '100%' : style.toolWidth === null ? '100%' : span}>
-      <Box width={w} flexDirection="row">{text}<Text color={color}>{running ? ` ◌${tail}` : ` ${style.toolIcon}${tail}`}</Text></Box>
+    <Box flexDirection="row" justifyContent="flex-end" width={chatWidth(style, columns)}>
+      <Box width={w} flexDirection="row">{text}<Text color={color}>{running ? ` ◌${tail}` : ` ${icon}${tail}`}</Text></Box>
     </Box>
   )
+}
+
+const OWN_RESULTS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']
+
+export const resultAside = (style: Style, tool: string): boolean => style.toolStyle === 'chat' && !OWN_RESULTS.includes(tool)
+
+export const renderResultAside = (el: ElementTable, style: Style, columns: number | undefined, tool: string, body: RenderElement, w?: number): RenderElement =>
+  asksLeft(style, tool) ? <el.Box flexDirection="column" paddingLeft={2}>{body}</el.Box> : (
+    <el.Box flexDirection="row" justifyContent="flex-end" width={chatWidth(style, columns)}>
+      <el.Box flexDirection="column" flexShrink={1} {...(w === undefined ? {} : { width: w })}>{body}</el.Box>
+    </el.Box>
+  )
+
+export type CallEnding = 'declined' | 'interrupted' | 'failed' | undefined
+
+export const callEnding = (call: { tool: string; isErrored: boolean; isInterrupted: boolean; output?: unknown }): CallEnding =>
+  isAsk(call.tool) && (call.isInterrupted || (call.isErrored && isDecline(call.output))) ? 'declined'
+    : call.isInterrupted ? 'interrupted'
+    : call.isErrored ? 'failed'
+    : undefined
+
+type Question = { question: string; header: string; options: { label: string; description?: string }[]; multiSelect: boolean }
+type Asked = { questions: Question[]; picks: Record<string, string[]>; notes: Record<string, string>; response?: string }
+
+const questionsOf = (value: unknown): Question[] => {
+  const list = record(value).questions
+  if (!Array.isArray(list)) return []
+  return list.flatMap(q => {
+    const { question, header, options, multiSelect } = record(q)
+    if (typeof question !== 'string' || typeof header !== 'string') return []
+    const labels = (Array.isArray(options) ? options : []).flatMap(o => {
+      const { label, description } = record(o)
+      return typeof label === 'string' ? [{ label, ...(typeof description === 'string' ? { description } : {}) }] : []
+    })
+    return [{ question, header, options: labels, multiSelect: multiSelect === true }]
+  })
+}
+
+const strings = (value: unknown, pick: (v: unknown) => unknown): Record<string, string> =>
+  Object.fromEntries(Object.entries(record(value)).flatMap(([k, v]) => {
+    const text = pick(v)
+    return typeof text === 'string' ? [[k, text]] : []
+  }))
+
+const picksOf = (q: Question, answer: string): string[] => {
+  if (!q.multiSelect) return answer.trim() ? [answer.trim()] : []
+  const labels = q.options.map(o => o.label)
+  const segments = answer.split(',')
+  const picks: string[] = []
+  const typed: string[] = []
+  for (let i = 0; i < segments.length;) {
+    let end: number | undefined
+    for (let j = segments.length; j > i; j--) {
+      if (labels.includes(segments.slice(i, j).join(',').trim())) {
+        end = j
+        break
+      }
+    }
+    if (end === undefined) {
+      typed.push(segments[i]!.trim())
+      i += 1
+    } else {
+      picks.push(segments.slice(i, end).join(',').trim())
+      i = end
+    }
+  }
+  const own = typed.filter(p => p !== '').join(', ')
+  return own ? [...picks, own] : picks
+}
+
+const askedOf = (input: unknown, output: unknown): Asked => {
+  const out = record(output)
+  const questions = questionsOf(output)
+  const fromInput = questionsOf(input)
+  const known = [...questions, ...fromInput]
+  return {
+    questions: questions.length ? questions : fromInput,
+    picks: Object.fromEntries(Object.entries(strings(out.answers, v => v)).flatMap(([question, answer]) => {
+      const q = known.find(x => x.question === question)
+      return q ? [[question, picksOf(q, answer)]] : []
+    })),
+    notes: strings(out.annotations, v => record(v).notes),
+    ...(typeof out.response === 'string' && out.response.trim() ? { response: out.response } : {}),
+  }
+}
+
+const ANSWER_CLIP = 40
+
+const askedTarget = (row: ToolRow): string => {
+  const { questions, picks } = askedOf(row.input, row.output)
+  const count = questions.length > 1 ? [`${questions.length} questions`] : []
+  const parts = questions.map(q => (picks[q.question]?.length ? `${q.header}: ${fitText(picks[q.question]!.join(', '), ANSWER_CLIP)}` : q.header))
+  return [...count, ...parts].join(' · ')
+}
+
+type Choice = { picked: boolean; label: string; detail?: string }
+type Shown = { head: string; question: string; choices: Choice[]; unanswered: boolean; note?: string }
+
+const shownOf = ({ questions, picks, notes }: Asked, declined: boolean): Shown[] =>
+  questions.map((q, i) => {
+    const chosen = picks[q.question] ?? []
+    const typed = chosen.filter(p => !q.options.some(o => o.label === p))
+    return {
+      head: questions.length > 1 ? `${i + 1}/${questions.length} ${q.header}` : q.header,
+      question: `${q.question}${q.multiSelect ? ' (several allowed)' : ''}`,
+      choices: [
+        ...q.options.map(o => ({ picked: chosen.includes(o.label), label: o.label, ...(o.description ? { detail: o.description } : {}) })),
+        ...typed.map(p => ({ picked: true, label: p, detail: 'your own answer' })),
+      ],
+      unanswered: !chosen.length && !declined,
+      ...(notes[q.question] ? { note: notes[q.question] } : {}),
+    }
+  })
+
+const CHOICE_PAD = 2
+const MARK_WIDTH = 2
+const NUMBER_WIDTH = 3
+const CHOICE_INDENT = CHOICE_PAD + MARK_WIDTH + NUMBER_WIDTH
+const QUESTION_INDENT = 4
+
+const choiceRow = ({ Box, Text }: ElementTable, t: Theme, c: Choice, n: number): RenderElement => (
+  <Box key={`c${n}`} flexDirection="row" paddingLeft={CHOICE_PAD}>
+    <Box width={MARK_WIDTH} flexShrink={0}><Text color={t.number}>{c.picked ? '✓' : ' '}</Text></Box>
+    <Box width={NUMBER_WIDTH} flexShrink={0}><Text color={c.picked ? t.number : undefined} dimColor={!c.picked}>{`${n}.`}</Text></Box>
+    <Box flexDirection="column" flexShrink={1}>
+      <Text color={c.picked ? t.number : undefined} dimColor={!c.picked}>{c.label}</Text>
+      {c.detail ? <Text dimColor>{c.detail}</Text> : null}
+    </Box>
+  </Box>
+)
+
+const shownWidth = (s: Shown): number => Math.max(
+  width(s.head),
+  QUESTION_INDENT + width(s.question),
+  ...s.choices.flatMap(c => [CHOICE_INDENT + width(c.label), CHOICE_INDENT + width(c.detail ?? '')]),
+  QUESTION_INDENT + width(s.note ? `note: ${s.note}` : ''),
+)
+
+const shownQuestion = (el: ElementTable, t: Theme, s: Shown, key: string): RenderElement => (
+  <el.Box key={key} flexDirection="column">
+    <el.Text bold color={askColor(t)}>{s.head}</el.Text>
+    <el.Box paddingLeft={QUESTION_INDENT}><el.Text>{s.question}</el.Text></el.Box>
+    {s.choices.map((c, j) => choiceRow(el, t, c, j + 1))}
+    {s.unanswered ? <el.Box key="none" paddingLeft={QUESTION_INDENT}><el.Text dimColor>– no answer</el.Text></el.Box> : null}
+    {s.note ? <el.Box key="note" paddingLeft={QUESTION_INDENT}><el.Text dimColor italic>{`note: ${s.note}`}</el.Text></el.Box> : null}
+  </el.Box>
+)
+
+export const renderAnswers = (el: ElementTable, style: Style, input: unknown, output: unknown, declined: boolean, columns: number | undefined): RenderElement | undefined => {
+  const asked = askedOf(input, output)
+  if (!asked.questions.length && !declined) return undefined
+  const t = style.theme
+  const n = asked.questions.length
+  const shown = shownOf(asked, declined)
+  const w = Math.min(Math.max(20, ...shown.map(shownWidth)), chatColumn(style, columns))
+  const body = (
+    <el.Box flexDirection="column" rowGap={1}>
+      {declined ? <el.Text key="declined" color={t.codeComment}>{n > 1 ? `Declined ${n} questions` : 'Declined'}</el.Text> : null}
+      {shown.map((s, i) => shownQuestion(el, t, s, `q${i}`))}
+      {asked.response ? <el.Text key="response" color={t.number}>{`✓ ${asked.response}`}</el.Text> : null}
+    </el.Box>
+  )
+  return renderResultAside(el, style, columns, ASK_TOOL, body, w)
 }
 
 type Places = Pick<Style, 'cwd' | 'home'>
@@ -1473,7 +1669,7 @@ const RESULT_LINES = 3
 
 export const renderShellResult = (el: ElementTable, style: Style, output: unknown): RenderElement => {
   const { Box, Text } = el
-  const out = output !== null && typeof output === 'object' ? (output as Record<string, unknown>) : {}
+  const out = record(output)
   const shown = [...lines(out.stdout), ...lines(out.stderr)]
   const head = shown.slice(0, RESULT_LINES).map(l => shortenPaths(l, style))
   return (
@@ -1999,7 +2195,7 @@ const editedIntoBeing = (output: unknown, rows: DiffLine[]): WholeFile | undefin
 }
 
 const written = (output: unknown): WholeFile | undefined => {
-  const out = output as { type?: unknown; filePath?: unknown; content?: unknown }
+  const out = record(output)
   return out.type === 'create' && typeof out.filePath === 'string' && typeof out.content === 'string' ? { kind: 'created', path: out.filePath, lines: lines(out.content) } : undefined
 }
 
@@ -2076,7 +2272,7 @@ export const withoutBashEdits = (output: unknown): unknown => {
 }
 
 export const hasShellOutput = (output: unknown): boolean => {
-  const out = output !== null && typeof output === 'object' ? (output as Record<string, unknown>) : {}
+  const out = record(output)
   return lines(out.stdout).length + lines(out.stderr).length > 0
 }
 
@@ -2264,7 +2460,7 @@ export const rememberCall = (calls: Set<string>, id: string, limit = 2000): void
 }
 
 export const errorReason = (output: unknown): string | undefined => {
-  const out = output !== null && typeof output === 'object' ? (output as Record<string, unknown>) : {}
+  const out = record(output)
   const text = typeof output === 'string' ? output : typeof out.stderr === 'string' && out.stderr.trim() ? out.stderr : out.stdout
   if (typeof text !== 'string') return undefined
   return text.split('\n').map(l => l.trim()).filter(l => l !== '' && !NOISE_LINES.test(l)).at(-1)
@@ -2295,6 +2491,10 @@ const shellLabel = (call: ToolRow, style: Style): string => {
 
 const callPieces = (call: ToolRow, style: Style): LinkPiece[] => {
   if (call.tool === 'Bash' || call.tool === 'PowerShell') return [{ text: shellLabel(call, style) }]
+  if (isAsk(call.tool)) {
+    const target = askedTarget(call)
+    return [{ text: call.tool }, ...(target ? [{ text: ` · ${target}` }] : [])]
+  }
   if (call.tool === 'Grep') {
     const pattern = field(call.input, 'pattern')
     const path = field(call.input, 'path')
@@ -2308,45 +2508,63 @@ const callPieces = (call: ToolRow, style: Style): LinkPiece[] => {
   return [{ text: `${verb} ` }, { text: shortTarget(style, target), path }, ...(args ? [{ text: ` ${args}` }] : [])]
 }
 
-const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number | undefined): RenderElement => {
-  const t = style.theme
-  const dot = statusColor(t, row)
-  const pieces = callPieces(row, style)
-  const label = `${pieceText(pieces)}${row.isInterrupted ? ' interrupted' : row.isErrored ? ' failed' : ''}`
-  return toolLayout(el, style, columns, label, dot, row.isRunning, (
-    <el.Text wrap="truncate-end" dimColor={toolDim(style)}>
-      {drawPieces(el, style, pieces)}
-      {row.isInterrupted ? <el.Text dimColor> interrupted</el.Text> : row.isErrored ? <el.Text color={t.codeFlag}> failed</el.Text> : null}
-    </el.Text>
-  ))
-}
-
 export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) => RenderElement; lit: TextHoverProps }
 
+const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number | undefined, toggle?: RowToggle): RenderElement => {
+  const t = style.theme
+  const dot = statusColor(t, row)
+  const pieces = callPieces(row, style).map(p => (toggle ? { text: p.text } : p))
+  const ending = callEnding(row)
+  const left = asksLeft(style, row.tool)
+  const label = `${pieceText(pieces)}${ending ? ` ${ending}` : ''}`
+  const text = (
+    <el.Text wrap="truncate-end" dimColor={toolDim(style) && !left}>
+      {left ? <el.Text bold color={askColor(t)}>{pieces[0]?.text}</el.Text> : null}
+      {drawPieces(el, style, left ? pieces.slice(1) : pieces)}
+      {ending === 'failed' ? <el.Text color={t.codeFlag}> failed</el.Text> : ending ? <el.Text dimColor>{` ${ending}`}</el.Text> : null}
+    </el.Text>
+  )
+  return toolLayout(el, style, columns, label, dot, row.isRunning, row.tool, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
+}
+
+const rowTarget = (style: Style, row: ToolRow, isShell: boolean): { target?: string; path?: string } => {
+  if (isAsk(row.tool)) {
+    const target = askedTarget(row)
+    return target ? { target } : {}
+  }
+  if (isShell) return { target: field(row.input, 'command')?.split('\n')[0] }
+  return targetOf(style, row.input, TARGET_FIELDS)
+}
+
 export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns?: number, toggle?: RowToggle): RenderElement => {
-  if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns)
+  if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns, toggle)
   const { Text } = el
   const t = style.theme
   const isShell = row.tool === 'Bash' || row.tool === 'PowerShell'
-  const verb = VERBS[row.tool] ?? row.tool.replace(/^mcp__([^_]+)__/, '$1 ')
-  const found: { target?: string; path?: string } = isShell ? { target: field(row.input, 'command')?.split('\n')[0] } : targetOf(style, row.input, TARGET_FIELDS)
+  const ask = isAsk(row.tool)
+  const verb = ask ? row.tool : VERBS[row.tool] ?? row.tool.replace(/^mcp__([^_]+)__/, '$1 ')
+  const found = rowTarget(style, row, isShell)
   const target = found.target
   const dot = statusColor(t, row)
-  const isPath = target !== undefined && (found.path !== undefined || /^(~|\.{0,2}\/|[A-Za-z]:\\)/.test(target))
+  const isPath = !ask && target !== undefined && (found.path !== undefined || /^(~|\.{0,2}\/|[A-Za-z]:\\)/.test(target))
   const stats = style.editRow === 'file' && isPath && row.stats ? row.stats : undefined
   const counts = stats ? ` +${stats.added} −${stats.removed}` : ''
+  const ending = callEnding(row)
+  const left = asksLeft(style, row.tool)
+  const dim = toolDim(style) && !left
+  const gap = ask ? ' · ' : ' '
 
-  const label = `${verb}${target === undefined ? "" : ` ${target}`}${counts}${row.isInterrupted ? " interrupted" : row.isErrored ? " failed" : ""}`
+  const label = `${verb}${target === undefined ? "" : `${gap}${target}`}${counts}${ending ? ` ${ending}` : ""}`
   const hoverProps = toggle ? { hover: toggle.lit } : {}
   const text = (
-      <Text wrap="truncate-end" dimColor={toolDim(style)} {...hoverProps}>
-        <Text bold={!toolDim(style)} dimColor={toolDim(style)} {...hoverProps}>{verb}</Text>
-        {target === undefined ? null : <Text {...hoverProps}> </Text>}
-        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={isPath ? t.path : t.inlineCode} dimColor={toolDim(style)} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toggle ? undefined : toolPath(row.tool, found.path) }])}</Text>}
-        {row.isInterrupted ? <Text dimColor {...hoverProps}> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag} {...hoverProps}> failed</Text> : null}
+      <Text wrap="truncate-end" dimColor={dim} {...hoverProps}>
+        <Text bold={!dim} color={left ? askColor(t) : undefined} dimColor={dim} {...hoverProps}>{verb}</Text>
+        {target === undefined ? null : <Text {...hoverProps}>{gap}</Text>}
+        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={ask ? undefined : isPath ? t.path : t.inlineCode} dimColor={dim} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toggle ? undefined : toolPath(row.tool, found.path) }])}</Text>}
+        {ending === 'failed' ? <Text color={t.codeFlag} {...hoverProps}> failed</Text> : ending ? <Text dimColor {...hoverProps}>{` ${ending}`}</Text> : null}
       </Text>
   )
-  return toolLayout(el, style, columns, label, dot, row.isRunning, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
+  return toolLayout(el, style, columns, label, dot, row.isRunning, row.tool, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
 }
 
 // editRow: file: the folder dim, the file name in the path color, then the diff's +N −M.
@@ -2723,7 +2941,7 @@ const quietToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow
   const reasons = failed.map((c, i) => renderFailure(el, style, c.output, `r${i}`)).filter((r): r is RenderElement => r !== undefined)
   const isShell = (c: ToolRow) => c.tool === 'Bash' || c.tool === 'PowerShell'
   const results = calls.flatMap((c, i) => (c.isErrored || c.output === undefined || !isShell(c) || isReadOnlyCall(c.tool, c.input) ? [] : [<el.Box key={`o${i}`}>{renderShellResult(el, style, c.output)}</el.Box>]))
-  const row = toolLayout(el, style, columns, label, dot, running, (
+  const row = toolLayout(el, style, columns, label, dot, running, undefined, (
     <el.Text wrap="truncate-end" dimColor={toolDim(style)}>{drawPieces(el, style, labels.flatMap((l, i) => (i ? [{ text: ' · ' }, ...l] : l)))}</el.Text>
   ))
   if (!reasons.length && !results.length) return row
@@ -2748,7 +2966,7 @@ export const renderToolGroup = (el: ElementTable, style: Style, calls: readonly 
   const lastTarget = lastFound.target?.split('\n')[0]
   const summary = groupSummary(calls)
   const label = `${summary}${failed ? ` · ${failed} failed` : ""}${lastTarget ? ` · last: ${lastTarget}` : ""}`
-  return toolLayout(el, style, columns, label, dot, running, (
+  return toolLayout(el, style, columns, label, dot, running, undefined, (
       <Text wrap="truncate-end" dimColor={toolDim(style)}>
         <Text bold={!toolDim(style)} dimColor={toolDim(style)}>{summary}</Text>
         {failed ? <Text color={t.codeFlag}>{` · ${failed} failed`}</Text> : null}
@@ -2762,6 +2980,14 @@ export const formatDuration = (ms: number): string => {
   if (s < 60) return `${Math.max(s, 0)}s`
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
+export const renderTaskRow = (el: ElementTable, style: Style, text: string, task: { status?: string; durationMs?: number } | undefined, columns: number | undefined): RenderElement => {
+  const t = style.theme
+  const color = task?.status === 'failed' ? t.codeFlag : task?.status === 'killed' ? t.codeComment : t.number
+  const summary = text.split('\n')[0] ?? ''
+  const label = task?.durationMs === undefined ? summary : `${summary} · ${formatDuration(task.durationMs)}`
+  return toolLayout(el, style, columns, label, color, false, undefined, <el.Text wrap="truncate-end" dimColor={toolDim(style)}>{label}</el.Text>)
 }
 
 export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: string, durationMs: number, time?: string): RenderElement => {
