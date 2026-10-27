@@ -54,7 +54,6 @@ export const DEFAULTS: PluginOptions = {
   proseWidth: "90",
   toolWidth: "",
   diffToggle: "card",
-  answerMark: false,
   stepMark: false,
   editErrors: "shown",
   editRow: "path",

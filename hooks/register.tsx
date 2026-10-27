@@ -14,8 +14,8 @@ import { DIFF_PALETTES, DIFFS_TEXT, paletteOptions } from './diff-palettes'
 import { drawDraft, isDraftLang } from './draft'
 import type { RunButton, SlashCommand } from './handoff'
 import { cardGlyph, drawnHandoff, handoffLast, isHandoffLang } from './handoff'
-import type { TurnMarks, TurnRole } from '../types'
-import { markTurns, roleOf } from './turns'
+import type { TurnWindow } from '../types'
+import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turns'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawPaste, Fold, TerminalEnv } from './render'
 import { MARK, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
@@ -70,17 +70,22 @@ const unfolded = atom({ plugin: 'prismantis', key: 'unfolded' } as const, [] as 
 const sent = atom({ plugin: 'prismantis', key: 'sent' } as const, [])
 const turnEnds = atom({ plugin: 'prismantis', key: 'turnEnds' } as const, [])
 const replies = atom({ plugin: 'prismantis', key: 'replies' } as const, [])
-const turnMarks = atom({ plugin: 'prismantis', key: 'turnMarks' } as const, {} as TurnMarks)
-const turnStart = atom({ plugin: 'prismantis', key: 'turnStart' } as const, null as number | null)
+const turnSteps = atom({ plugin: 'prismantis', key: 'turnSteps' } as const, {} as Record<string, true>)
+const turnWindows = atom({ plugin: 'prismantis', key: 'turnWindows' } as const, [] as TurnWindow[])
 const setupAt = atom({ plugin: 'prismantis', key: 'setupAt' } as const, 0)
 const setupFocus = atom({ plugin: 'prismantis', key: 'setupFocus' } as const, '')
 const setupLand = atom({ plugin: 'prismantis', key: 'setupLand' } as const, '')
 const foundPaths = atom({ plugin: 'prismantis', key: 'foundPaths' } as const, [])
 
-const readTurnMarks = async ($: EngineInterface): Promise<void> => {
-  const marks = markTurns(await $.session.messages())
-  await update($, turnMarks, () => marks)
-  await update($, turnStart, () => null)
+const readTurnSteps = async ($: EngineInterface): Promise<void> => {
+  const steps = stepTexts(await $.session.messages())
+  await update($, turnSteps, () => steps)
+}
+
+const moveWindow = async ($: EngineInterface, move: (windows: TurnWindow[], at: number) => TurnWindow[]): Promise<void> => {
+  const at = await $.clock.now()
+  const windows = await read($, turnWindows)
+  if (move(windows, at) !== windows) await update($, turnWindows, latest => move(latest, at))
 }
 
 const firstDrawn = async ($: EngineInterface, id: string): Promise<number> => {
@@ -99,29 +104,14 @@ const runButton = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['res
   return glyphButton(el, cardGlyph(glyph), <el.Button key={key} variant="primary" label={`run ${line}`} onPress={press} />, key)
 }
 
-const marksTurns = (style: Style): boolean => style.answerMark || style.stepMark
-
-const turnRole = async ($: EngineInterface, style: Style, requestId: string, text: string, isSummary: boolean): Promise<TurnRole | undefined> => {
-  if (!marksTurns(style)) return undefined
-  const drawnAt = await firstDrawn($, requestId)
-  const running = await read($, turnStart)
-  if (running !== null && drawnAt >= running) return undefined
-  return isSummary ? 'step' : roleOf(await read($, turnMarks), text.trim())
+const isStepRow = async ($: EngineInterface, style: Style, requestId: string, text: string, isSummary: boolean): Promise<boolean> => {
+  if (!style.stepMark) return false
+  if (isSummary) return true
+  return isStep(await read($, turnWindows), await read($, turnSteps), await firstDrawn($, requestId), text.trim())
 }
 
-const turnStyle = (style: Style, role: TurnRole | undefined): { dimProse?: true } =>
-  style.answerMark && (role === 'first' || role === 'step') ? { dimProse: true } : {}
-
-const turnRule = ({ Box, Text }: ReturnType<EngineInterface['ui']['resolve']>, style: Style, role: TurnRole | undefined, columns: number): RenderElement | null => {
-  if (style.answerMark && role === 'answer') return <Box key="answer" paddingLeft={2}><Text color={style.theme.rule} dimColor={!style.theme.rule}>{'━'.repeat(columns)}</Text></Box>
-  if (style.stepMark && role === 'step') return <Box key="step" paddingLeft={2}><Text dimColor>{'─'.repeat(columns)}</Text></Box>
-  return null
-}
-
-const withTurnRule = (el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, role: TurnRole | undefined, columns: number, message: RenderElement): RenderElement => {
-  const rule = turnRule(el, style, role, columns)
-  return rule ? <el.Box flexDirection="column">{rule}{message}</el.Box> : message
-}
+const withStepRule = ({ Box, Text }: ReturnType<EngineInterface['ui']['resolve']>, isStepped: boolean, columns: number, message: RenderElement): RenderElement =>
+  isStepped ? <Box flexDirection="column"><Box key="step" paddingLeft={2}><Text dimColor>{'─'.repeat(columns)}</Text></Box>{message}</Box> : message
 
 type Typeset = Exclude<Formula, { error: true }> & { tex: string }
 
@@ -745,7 +735,8 @@ export const register: Register = (on, options) => {
     })
   }
 
-  on('tool.call', async (_$, e, next) => {
+  on('tool.call', async ($, e, next) => {
+    if (style.stepMark && e.agentId === undefined) await moveWindow($, toolInWindow)
     const done = await next(e)
     pathChecks.asked = new Set(pathChecks.found)
     return done
@@ -755,7 +746,7 @@ export const register: Register = (on, options) => {
     terminal = await probe($, style, probes)
     void latexEngine($, latex)
     const started = await next(e)
-    if (marksTurns(style)) await readTurnMarks($)
+    if (style.stepMark) await readTurnSteps($)
     await $.command
       .register({ name: 'prismantis', description: 'Switch the prismantis theme, pick styles from samples, copy the last reply, or show the demo', argumentHint: '[theme [<name> | random] | setup [<step> [<pick>]] | copy [code] | demo]' })
       .catch(() => undefined)
@@ -802,6 +793,11 @@ export const register: Register = (on, options) => {
     return <el.Box flexDirection="row" columnGap={2}>{footer}{iconButton(el, style, button, 'turn.copy')}</el.Box>
   })
 
+  on('turn.start', async ($, e, next) => {
+    if (style.stepMark && e.agentId === undefined) await moveWindow($, (windows, at) => openWindow(windows, e.turnId, at))
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     const keep = style.copyButtons && style.replyCopy === 'footer' && e.answer !== ''
     if (e.agentId === undefined && (style.clock !== 'off' || keep)) {
@@ -810,15 +806,11 @@ export const register: Register = (on, options) => {
       if (keep) await update($, replies, list => withReply(list, { durationMs: e.durationMs, at, text: e.answer }))
     }
     const done = await next(e)
-    if (marksTurns(style) && e.agentId === undefined) await readTurnMarks($)
+    if (style.stepMark && e.agentId === undefined) await moveWindow($, (windows, at) => closeWindow(windows, e.turnId, at))
     return done
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (marksTurns(style)) {
-      const now = await $.clock.now()
-      await update($, turnStart, at => at ?? now)
-    }
     if (style.clock !== 'off' && (e.origin.kind === 'composer' || e.origin.kind === 'bridge')) {
       const at = await $.clock.now()
       await update($, sent, list => withRecord(list, { text: promptKey(e.text), at }))
@@ -947,13 +939,14 @@ export const register: Register = (on, options) => {
     const fromFooter = style.replyCopy === 'footer' && e.surface === 'terminal'
     const reply = !fromFooter && (blocks.length > 1 || hasRtl(e.props.text)) ? e.props.text : undefined
     const corner = reply !== undefined && markerRoom(surfaceStyle) > 0
-    const role = await turnRole($, style, e.requestId, e.props.text, e.props.isSummary === true)
+    const isSummary = e.props.isSummary === true
+    const isStepped = await isStepRow($, style, e.requestId, e.props.text, isSummary)
     const columns = columnsOf(e.viewport)
-    const drawn: Style = { ...surfaceStyle, ...(narration ? { narration } : {}), ...turnStyle(style, role) }
+    const drawn: Style = { ...surfaceStyle, ...(narration ? { narration } : {}), ...(isStepped && isSummary ? { dimProse: true } : {}) }
     const message = (
       <Box key="msg" flexDirection="row">
         <Box width={2} flexShrink={0}>
-          <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? (e.props.isSummary === true ? style.thinkingIcon : style.replyIcon) : ' '}</Text>
+          <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? (isSummary ? style.thinkingIcon : style.replyIcon) : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
           {drawMarkdown($, el, drawn, blocks, columns, math, pictures, reply, open, { id: e.requestId, press: reach.marks })}
@@ -961,7 +954,7 @@ export const register: Register = (on, options) => {
         {corner ? <Box width={MARK} flexShrink={0} /> : null}
       </Box>
     )
-    return withTurnRule(el, style, role, columns, message)
+    return withStepRule(el, isStepped, columns, message)
   })
 
   on('prismantis.markdown', async ($, e, next) => {

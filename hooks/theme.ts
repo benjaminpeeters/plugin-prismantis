@@ -40,7 +40,6 @@ export type Style = {
   createdStyle: 'preview' | 'card'
   diffToggle: 'card' | 'row'
   editErrors: 'shown' | 'folded'
-  answerMark: boolean
   stepMark: boolean
   dimProse?: true
   proseWidth: number | null
@@ -91,7 +90,7 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte|light|dawn/.test(t) && t !== 'mono')
 
 export const FORK_OPTIONS = [
-  'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'answerMark', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
+  'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
   'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'runIcon', 'turnWord', 'replyCopy',
 ] as const
 
@@ -182,7 +181,6 @@ export const resolveStyle = (options: PluginOptions): Style => {
     createdStyle: choice(options, 'createdStyle', ['preview', 'card'] as const),
     diffToggle: choice(options, 'diffToggle', ['card', 'row'] as const),
     editErrors: choice(options, 'editErrors', ['shown', 'folded'] as const),
-    answerMark: flag(options, 'answerMark'),
     stepMark: flag(options, 'stepMark'),
     proseWidth: flag(options, 'proseCap') ? proseColumns(options.proseWidth) : null,
     toolWidth: toolColumns(options),

@@ -1,49 +1,59 @@
 import type { SessionMessage } from 'claude-code'
 
-import type { TurnMarks, TurnRole } from '../types'
+import type { TurnWindow } from '../types'
+import { withRecord } from './clock'
 
-type Turn = { texts: string[]; answered: boolean }
+type Turn = { texts: { text: string; afterTool: boolean }[]; hasTools: boolean }
 
 const KEEP = 500
-
-const roleAt = (i: number, steps: number): TurnRole | undefined => {
-  if (steps <= 0) return undefined
-  if (i >= steps) return 'answer'
-  return i === 0 ? 'first' : 'step'
-}
 
 const turnsOf = (messages: readonly SessionMessage[]): Turn[] => {
   const turns: Turn[] = []
   for (const m of messages) {
     if (m.role === 'user') {
-      if (m.text.trim() && !m.toolResults?.length) turns.push({ texts: [], answered: true })
+      if (m.text.trim() && !m.toolResults?.length) turns.push({ texts: [], hasTools: false })
       continue
     }
     const turn = turns[turns.length - 1]
     if (!turn) continue
     const text = m.text.trim()
-    if (text || m.toolUses.length) turn.answered = !m.toolUses.length
-    if (text) turn.texts.push(text)
+    if (text) turn.texts.push({ text, afterTool: turn.hasTools })
+    if (m.toolUses.length) turn.hasTools = true
   }
   return turns
 }
 
-export const markTurns = (messages: readonly SessionMessage[]): TurnMarks => {
-  const turns = turnsOf(messages)
-  const seen = new Map<string, { turn: number; role: TurnRole | undefined }>()
-  const ambiguous = new Set<string>()
-  for (const [t, turn] of turns.slice(-KEEP).entries()) {
-    const steps = turn.answered ? turn.texts.length - 1 : turn.texts.length
-    for (const [i, text] of turn.texts.entries()) {
-      const role = roleAt(i, steps)
-      const before = seen.get(text)
-      if (before && (before.turn !== t || before.role !== role)) ambiguous.add(text)
-      seen.set(text, { turn: t, role })
-    }
-  }
-  const marks: TurnMarks = {}
-  for (const [text, { role }] of seen) if (role && !ambiguous.has(text)) marks[text] = role
+export const stepTexts = (messages: readonly SessionMessage[]): Record<string, true> => {
+  const steps = new Set<string>()
+  const others = new Set<string>()
+  for (const turn of turnsOf(messages).slice(-KEEP)) for (const { text, afterTool } of turn.texts) (afterTool ? steps : others).add(text)
+  const marks: Record<string, true> = {}
+  for (const text of steps) if (!others.has(text)) marks[text] = true
   return marks
 }
 
-export const roleOf = (marks: TurnMarks, text: string): TurnRole | undefined => (Object.hasOwn(marks, text) ? marks[text] : undefined)
+const isOpen = (window: TurnWindow | undefined): window is TurnWindow => window !== undefined && window.end === undefined
+
+const withLast = (windows: TurnWindow[], last: TurnWindow): TurnWindow[] => [...windows.slice(0, -1), last]
+
+export const openWindow = (windows: TurnWindow[], turnId: string, at: number): TurnWindow[] => {
+  const last = windows[windows.length - 1]
+  if (isOpen(last) && last.turnId === turnId) return windows
+  return withRecord(isOpen(last) ? withLast(windows, { ...last, end: at }) : windows, { turnId, start: at })
+}
+
+export const toolInWindow = (windows: TurnWindow[], at: number): TurnWindow[] => {
+  const last = windows[windows.length - 1]
+  return isOpen(last) && last.tool === undefined ? withLast(windows, { ...last, tool: at }) : windows
+}
+
+export const closeWindow = (windows: TurnWindow[], turnId: string, at: number): TurnWindow[] => {
+  const last = windows[windows.length - 1]
+  return isOpen(last) && last.turnId === turnId ? withLast(windows, { ...last, end: at }) : windows
+}
+
+export const isStep = (windows: readonly TurnWindow[], steps: Readonly<Record<string, true>>, drawnAt: number, text: string): boolean => {
+  const window = windows.findLast(w => w.start <= drawnAt && (w.end === undefined || drawnAt <= w.end))
+  if (window) return window.tool !== undefined && window.tool <= drawnAt
+  return Object.hasOwn(steps, text)
+}
