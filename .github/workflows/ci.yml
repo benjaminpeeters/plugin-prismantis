@@ -64,6 +64,8 @@ jobs:
         working-directory: scripts
       - name: Bundle matches its source and holds only MIT packages
         run: npm --prefix scripts run build:vendor && git diff --exit-code hooks/vendor
+      - name: Test defaults match plugin.json
+        run: npm --prefix scripts run defaults:check
       - name: Codex marketplace pins the same release
         run: test "$(jq -c '.plugins[0].source|{ref,sha}' .claude-plugin/marketplace.json)" = "$(jq -c '.plugins[0].source|{ref,sha}' .agents/plugins/marketplace.json)"
       - name: Codex files match their Claude Code source on a release

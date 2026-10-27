@@ -9,7 +9,6 @@ import { CONTROL, displayText, inlineText, isWebLink, nestedBlocks, texText } fr
 import type { Flow } from './rtl'
 import { LTR_BLANK, ROW_MARK, ROW_MARK_TEXT, WALL, codeVisual, commentTail, commentVisual, containsRtl, flow, hasRtl, heldCell, listMarker, opensLatin, terminalLine } from './rtl'
 import type { Style, Theme } from './theme'
-import { TOOL_ICON } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
 
@@ -1417,11 +1416,13 @@ const toolGutter = ({ Box, Text }: ElementTable, style: Style, color: string | u
     ? <Box width={4} flexShrink={0}><Text color={color}>{'  ⎿ '}</Text></Box>
     : <Box width={2} flexShrink={0}><Text color={color}>{running ? '◌' : style.toolIcon}</Text></Box>
 
+const PRIVATE_USE = /\p{Co}/u
+
 const toolLayout = (el: ElementTable, style: Style, columns: number | undefined, label: string, color: string | undefined, running: boolean, text: RenderElement) => {
   const { Box, Text } = el
   if (style.toolStyle !== "chat") return <Box flexDirection="row">{toolGutter(el, style, color, running)}{text}</Box>
   const span = columns === undefined ? style.toolWidth ?? 100 : Math.min(columns, style.toolWidth ?? Infinity)
-  const tail = style.toolIcon === TOOL_ICON ? '' : ' '
+  const tail = PRIVATE_USE.test(style.toolIcon) ? ' ' : ''
   const w = Math.min(width(label) + 2 + tail.length, Math.max(20, Math.floor(span * 0.6)))
   return (
     <Box flexDirection="row" justifyContent="flex-end" width={columns === undefined ? style.toolWidth ?? '100%' : style.toolWidth === null ? '100%' : span}>

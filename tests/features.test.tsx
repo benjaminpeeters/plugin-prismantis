@@ -11,6 +11,7 @@ import { ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, setupParts,
 import type { Theme } from '../hooks/theme'
 import { EDIT_NOTES, PRISM_COLORS, bashEdits, columnWidths, contrast, describeShell, diffLines, diffTint, fullHue, movesTree, onTint, pathLanguage, previewBand, tint, wordTint, errorReason, formatDuration, groupSummary, isReadOnlyCall, programsOf, refusalReason, rememberCall, shortTarget, shortenPaths, withoutBashEdits } from '../hooks/render'
 import { claudeAt } from './claude-version'
+import { DEFAULTS } from './manifest-defaults'
 
 const t = PRESETS['catppuccin-mocha']
 const BUTTON_PROBE = 'TextButtonProbe'
@@ -2412,7 +2413,7 @@ test('/prismantis setup walks every step, saves each pick through config, and ca
   })
   const steps = setupSteps(PRESET_NAMES)
   expect(steps.map(s => s.key)).toEqual(['theme', 'tableStyle', 'taskStyle', 'headingStyle', 'copyButtonStyle', 'promptStyle', 'clock', 'toolStyle', 'toolOutput', 'diffStyle', 'pieStyle'])
-  for (const step of steps.slice(1)) for (const value of step.options) expect(resolveStyle({ [step.key]: value })[step.key]).toBe(value)
+  for (const step of steps.slice(1)) for (const value of step.options) expect(resolveStyle({ ...DEFAULTS, [step.key]: value })[step.key]).toBe(value)
   expect(steps[0]!.options).toEqual(PRESET_NAMES)
   expect(steps.find(s => s.key === 'copyButtonStyle')?.note).toContain('`hover` puts a dim ⧉ beside each block instead and shows its buttons only while the pointer is on that ⧉')
   expect((await setupRun($, 'setup')).text).toBe(SETUP_PANE_OPENED)

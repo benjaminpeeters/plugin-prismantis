@@ -3,6 +3,7 @@ import type { PluginOptions } from 'claude-code'
 import type { ClipboardBackend } from './clipboard'
 import type { PresetName } from './presets'
 import { PRESET_BACKGROUNDS, PRESET_NAMES, PRESETS } from './presets'
+import { width } from './render'
 import type { Shape, Terminal } from './rtl'
 import { TERMINALS } from './rtl'
 
@@ -89,29 +90,61 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 
 export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte|light|dawn/.test(t) && t !== 'mono')
 
-const trimmed = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+export const FORK_OPTIONS = [
+  'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'answerMark', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
+  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'runIcon', 'turnWord', 'replyCopy',
+] as const
 
-export const TOOL_ICON = '●'
+export type ForkOption = (typeof FORK_OPTIONS)[number]
 
-// diffTint and diffWordTint: a percent, 0 to 60 and 0 to 90, of the diff color in a changed
-// line's background and on top of it under a changed word; anything else keeps the built-in share.
-const tintShare = (value: unknown, max: number): number | undefined => {
-  const percent = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
-  return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : undefined
+const fail = (rule: string, value: unknown): never => {
+  throw new Error(`prismantis: ${rule}, not ${JSON.stringify(value)}; set it in /config`)
+}
+
+const flag = (options: PluginOptions, key: ForkOption): boolean => {
+  const value = options[key]
+  return typeof value === 'boolean' ? value : fail(`${key} must be true or false`, value)
+}
+
+const choice = <T extends string>(options: PluginOptions, key: ForkOption, allowed: readonly T[]): T => {
+  const value = options[key]
+  return allowed.includes(value as T) ? (value as T) : fail(`${key} must be one of ${allowed.join(', ')}`, value)
+}
+
+const text = (options: PluginOptions, key: ForkOption): string => {
+  const value = options[key]
+  return typeof value === 'string' ? value.trim() : fail(`${key} must be a text`, value)
+}
+
+const glyph = (options: PluginOptions, key: ForkOption): string => {
+  const value = text(options, key)
+  return width(value) === 1 ? value : fail(`${key} must be one glyph, one terminal cell wide`, options[key])
+}
+
+const numeric = (options: PluginOptions, key: ForkOption, rule: string): string => {
+  const value = options[key]
+  return typeof value === 'string' ? value.trim() : typeof value === 'number' && Number.isFinite(value) ? String(value) : fail(rule, value)
+}
+
+const tintShare = (options: PluginOptions, key: ForkOption, max: number): number | undefined => {
+  const rule = `${key} must be empty or a percent from 0 to ${max}`
+  const value = numeric(options, key, rule)
+  if (value === '') return undefined
+  const percent = Number(value)
+  return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : fail(rule, options[key])
 }
 
 const columnsFrom = (value: unknown, max: number, rule: string): number => {
   const n = typeof value === 'string' ? Number(value) : value
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < 40 || n > max) {
-    throw new Error(`prismantis: ${rule}, not ${JSON.stringify(value)}; set it in /config`)
-  }
-  return n
+  return typeof n === 'number' && Number.isInteger(n) && n >= 40 && n <= max ? n : fail(rule, value)
 }
 
 const proseColumns = (value: unknown): number => columnsFrom(value, 200, 'proseCap is on, so proseWidth must be a whole number of columns from 40 to 200')
 
-const toolColumns = (value: unknown): number | null =>
-  value === undefined || value === '' ? null : columnsFrom(value, 400, 'toolWidth must be empty or a whole number of columns from 40 to 400')
+const toolColumns = (options: PluginOptions): number | null => {
+  const rule = 'toolWidth must be empty or a whole number of columns from 40 to 400'
+  return numeric(options, 'toolWidth', rule) === '' ? null : columnsFrom(options.toolWidth, 400, rule)
+}
 
 export const pickTheme = (value: unknown, random = Math.random): string => {
   const name = value === 'random' ? RANDOM_THEMES[Math.floor(random() * RANDOM_THEMES.length)] : value
@@ -126,6 +159,8 @@ export const resolveStyle = (options: PluginOptions): Style => {
   )
 
   const rtl = pick(options.rtl, ['auto', 'off', ...(Object.keys(TERMINALS) as Terminal[])], 'auto')
+  const diffTint = tintShare(options, 'diffTint', 60)
+  const diffWordTint = tintShare(options, 'diffWordTint', 90)
 
   return {
     theme: { ...base, ...fromFields },
@@ -138,20 +173,20 @@ export const resolveStyle = (options: PluginOptions): Style => {
     toolStyle: pick(options.toolStyle, ['chat', 'tree-dim', 'tree-bold', 'classic'] as const, 'chat'),
     toolOutput: pick(options.toolOutput, ['full', 'quiet'] as const, 'full'),
     diffStyle: pick(options.diffStyle, ['card', 'full', 'marks', 'bar'] as const, 'card'),
-    diffWidth: pick(options.diffWidth, ['fit', 'full'] as const, 'fit'),
-    diffFold: pick(options.diffFold, ['none', 'open', 'folded'] as const, 'none'),
-    ...(tintShare(options.diffTint, 60) === undefined ? {} : { diffTint: tintShare(options.diffTint, 60) }),
-    ...(tintShare(options.diffWordTint, 90) === undefined ? {} : { diffWordTint: tintShare(options.diffWordTint, 90) }),
-    diffPath: options.diffPath === true,
-    diffBorder: options.diffBorder !== false,
-    createdStyle: pick(options.createdStyle, ['preview', 'card'] as const, 'preview'),
-    diffToggle: pick(options.diffToggle, ['card', 'row'] as const, 'card'),
-    editErrors: pick(options.editErrors, ['shown', 'folded'] as const, 'shown'),
-    answerMark: options.answerMark === true,
-    stepMark: options.stepMark === true,
-    proseWidth: options.proseCap === true ? proseColumns(options.proseWidth) : null,
-    toolWidth: toolColumns(options.toolWidth),
-    editRow: pick(options.editRow, ['path', 'file'] as const, 'path'),
+    diffWidth: choice(options, 'diffWidth', ['fit', 'full'] as const),
+    diffFold: choice(options, 'diffFold', ['none', 'open', 'folded'] as const),
+    ...(diffTint === undefined ? {} : { diffTint }),
+    ...(diffWordTint === undefined ? {} : { diffWordTint }),
+    diffPath: flag(options, 'diffPath'),
+    diffBorder: flag(options, 'diffBorder'),
+    createdStyle: choice(options, 'createdStyle', ['preview', 'card'] as const),
+    diffToggle: choice(options, 'diffToggle', ['card', 'row'] as const),
+    editErrors: choice(options, 'editErrors', ['shown', 'folded'] as const),
+    answerMark: flag(options, 'answerMark'),
+    stepMark: flag(options, 'stepMark'),
+    proseWidth: flag(options, 'proseCap') ? proseColumns(options.proseWidth) : null,
+    toolWidth: toolColumns(options),
+    editRow: choice(options, 'editRow', ['path', 'file'] as const),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,
     highlightPaths: options.highlightPaths !== false,
@@ -159,7 +194,7 @@ export const resolveStyle = (options: PluginOptions): Style => {
     mermaidAscii: options.mermaidAscii === true,
     copyButtons: options.copyButtons !== false,
     copyButtonStyle: pick(options.copyButtonStyle, ['inline', 'hover', 'icon'] as const, 'inline'),
-    replyCopy: pick(options.replyCopy, ['message', 'footer'] as const, 'message'),
+    replyCopy: choice(options, 'replyCopy', ['message', 'footer'] as const),
     htmlCopy: null,
     httpLinks: false,
     editorLinks: false,
@@ -167,14 +202,14 @@ export const resolveStyle = (options: PluginOptions): Style => {
     pathLinks: false,
     diagramHints: options.diagramHints !== false && options.mermaid !== false,
     issueHint: options.issueHint !== false,
-    handoff: options.handoff !== false,
-    drafts: options.drafts !== false,
-    copyIcon: trimmed(options.copyIcon) || '⧉',
-    runIcon: trimmed(options.runIcon) || '▷',
-    replyIcon: trimmed(options.replyIcon) || '●',
-    thinkingIcon: trimmed(options.thinkingIcon) || '●',
-    toolIcon: trimmed(options.toolIcon) || TOOL_ICON,
-    turnWord: trimmed(options.turnWord),
+    handoff: flag(options, 'handoff'),
+    drafts: flag(options, 'drafts'),
+    copyIcon: glyph(options, 'copyIcon'),
+    runIcon: glyph(options, 'runIcon'),
+    replyIcon: glyph(options, 'replyIcon'),
+    thinkingIcon: glyph(options, 'thinkingIcon'),
+    toolIcon: glyph(options, 'toolIcon'),
+    turnWord: text(options, 'turnWord'),
     rtl,
     reorder: rtl !== 'auto' && rtl !== 'off',
     shape: rtl === 'auto' || rtl === 'off' ? 'visual' : TERMINALS[rtl],

@@ -373,6 +373,8 @@ Open `/config` and look for the **prismantis** rows, or set values in `~/.claude
 
 Options sit under `options`, keyed by the plugin's install name. Project settings are not read for plugin options.
 
+The options only the fork has take their defaults from `plugin.json` alone, and a missing or invalid value stops the mod with a message naming the option: the icons (`copyIcon`, `runIcon`, `replyIcon`, `thinkingIcon`, `toolIcon`, each one glyph one terminal cell wide), `turnWord`, `replyCopy`, `handoff`, `drafts`, the diff options `diffWidth`, `diffFold`, `diffTint`, `diffWordTint`, `diffToggle`, `diffBorder`, `diffPath`, `createdStyle`, `editErrors` and `editRow`, and `proseCap`, `proseWidth` (while `proseCap` is on), `toolWidth`, `answerMark` and `stepMark`. The options shared with upstream, `copyButtonStyle` among them, and every `<token>Color`, the fork's own colors included, keep upstream's reading: an unknown value is ignored.
+
 | Option | Values | Default |
 | --- | --- | --- |
 | `enabled` | `true`, `false` | `true` |
@@ -409,8 +411,8 @@ Options sit under `options`, keyed by the plugin's install name. Project setting
 | `diffStyle` | `card` (rounded box, tinted lines), `full` (no box, lines tinted across the width), `marks` (no tint, colored `+` and `−` marks), `bar` (no tint, a colored `▌` before each changed line) | `card` |
 | `diffWidth` | `fit` (a card as wide as its lines), `full` (fork: every card spans the window) | `fit` |
 | `diffFold` | `none`, `open` (fork: a click anywhere on the card folds it to its head line, starts open), `folded` (fork: starts as the head line, a click opens it) | `none` |
-| `diffTint` | percent of the diff color in a changed line's background, 0 to 60; 0 tints only the changed words (fork) | 30 dark, 20 light |
-| `diffWordTint` | percent of the diff color laid over a changed word's line tint, 0 to 90 (fork) | 30 |
+| `diffTint` | percent of the diff color in a changed line's background, 0 to 60; 0 tints only the changed words (fork) | empty (30 dark, 20 light) |
+| `diffWordTint` | percent of the diff color laid over a changed word's line tint, 0 to 90 (fork) | empty (30) |
 | `diffBorder` | `true`, `false`: the card's border; with `diffBackgroundColor` gives border, fill, both or neither (fork) | `true` |
 | `proseCap` | `true`, `false`: wrap paragraphs, lists, quotes and alerts at `proseWidth`; headings, code, tables, diagrams, figures and cards keep the whole width (fork) | `false` |
 | `proseWidth` | columns, a whole number from 40 to 200; required while `proseCap` is on, an invalid value stops the mod with a message naming it (fork) | `90` |

@@ -359,13 +359,13 @@
     "diffTint": {
       "type": "string",
       "title": "Diff tint",
-      "description": "How strongly added and removed lines are tinted (fork): the percent of the diff color in their background, 0 to 60, lowered further where code text would drop below 4.5:1; 0 leaves the lines on the card's ground and tints only the changed words. Empty keeps 30 on dark themes and 20 on light ones.",
+      "description": "How strongly added and removed lines are tinted (fork): the percent of the diff color in their background, 0 to 60, lowered further where code text would drop below 4.5:1; 0 leaves the lines on the card's ground and tints only the changed words. Empty keeps 30 on dark themes and 20 on light ones; an invalid value stops prismantis loading, with this option named.",
       "default": ""
     },
     "diffWordTint": {
       "type": "string",
       "title": "Diff word tint",
-      "description": "How strongly the changed words stand out from their line (fork): the percent of the diff color laid over the line's tint, 0 to 90. Empty keeps 30.",
+      "description": "How strongly the changed words stand out from their line (fork): the percent of the diff color laid over the line's tint, 0 to 90. Empty keeps 30; an invalid value stops prismantis loading, with this option named.",
       "default": ""
     },
     "proseCap": {
@@ -497,32 +497,32 @@
     "copyIcon": {
       "type": "string",
       "title": "Copy icon",
-      "description": "The glyph of a copy marker: on hand-off and draft cards, beside the turn footer, and on hover markers. A marker with one action copies on click; one with several opens them. One terminal cell wide, e.g. a Nerd Font icon such as . Empty uses ⧉.",
-      "default": ""
+      "description": "The glyph of a copy marker: on hand-off and draft cards, beside the turn footer, and on hover markers. A marker with one action copies on click; one with several opens them. One terminal cell wide, e.g. a Nerd Font icon such as . Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "⧉"
     },
     "replyIcon": {
       "type": "string",
       "title": "Reply icon",
-      "description": "The glyph before the first line of a reply text, what Claude writes to you (fork). One terminal cell wide, e.g. a Nerd Font icon. Empty uses ●.",
-      "default": ""
+      "description": "The glyph before the first line of a reply text, what Claude writes to you (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "●"
     },
     "thinkingIcon": {
       "type": "string",
       "title": "Thinking icon",
-      "description": "The glyph before a summary row, the line Claude Code draws between tool calls in place of Claude's thinking or text (with thinkingDisplay updates, the thinking) (fork). One terminal cell wide. Empty uses ●.",
-      "default": ""
+      "description": "The glyph before a summary row, the line Claude Code draws between tool calls in place of Claude's thinking or text (with thinkingDisplay updates, the thinking) (fork). One terminal cell wide. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "●"
     },
     "toolIcon": {
       "type": "string",
       "title": "Tool icon",
-      "description": "The status glyph of a finished tool row, colored by how the call ended (fork); a running call keeps ◌. One terminal cell wide, e.g. a Nerd Font icon. Empty uses ●.",
-      "default": ""
+      "description": "The status glyph of a finished tool row, colored by how the call ended (fork); a running call keeps ◌. One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "●"
     },
     "runIcon": {
       "type": "string",
       "title": "Run icon",
-      "description": "The glyph of the run mark a hand-off card puts on a slash command entry, before its copy icon. One terminal cell wide, e.g. a Nerd Font icon. Empty uses ▷.",
-      "default": ""
+      "description": "The glyph of the run mark a hand-off card puts on a slash command entry, before its copy icon. One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "▷"
     },
     "turnWord": {
       "type": "string",

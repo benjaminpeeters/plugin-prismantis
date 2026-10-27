@@ -2,10 +2,11 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { cpus } from 'node:os'
 import { join } from 'node:path'
 import { ROOT, load } from './load.mjs'
+import { DEFAULTS } from './manifest.mjs'
 
 const { parse, mermaidText, boxArt, resolveStyle, el, reply, renderDiffCard } = await load()
 const demo = readFileSync(join(ROOT, 'docs/demo.md'), 'utf8')
-const style = resolveStyle({ theme: 'dracula', rtl: 'warp' })
+const style = resolveStyle({ ...DEFAULTS, theme: 'dracula', rtl: 'warp' })
 const columns = 200
 const RUNS = Number(process.env.RUNS ?? 200)
 const BASELINE = join(ROOT, 'docs/bench-baseline.json')

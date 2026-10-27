@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { resolveStyle } from '../hooks/theme'
 import type { Found } from './buttons'
+import { DEFAULTS } from './manifest-defaults'
 
 const reply = 'A paragraph long enough to read as prose.\n\n- a list item\n- another\n\n```ts\nconst wide = "code keeps the whole width"\n```'
 
@@ -43,8 +44,10 @@ test('proseCap leaves a draft card\'s body at the card\'s whole width', { option
 })
 
 test('proseCap on with a missing or invalid proseWidth fails loudly, naming the option', () => {
-  for (const proseWidth of [undefined, '', 'wide', '30', '80.5']) {
-    expect(() => resolveStyle({ proseCap: true, ...(proseWidth === undefined ? {} : { proseWidth }) })).toThrow(/proseWidth must be a whole number of columns from 40 to 200/)
+  const { proseWidth: _, ...unset } = DEFAULTS
+  expect(() => resolveStyle({ ...unset, proseCap: true })).toThrow(/proseWidth must be a whole number of columns from 40 to 200/)
+  for (const proseWidth of ['', 'wide', '30', '80.5']) {
+    expect(() => resolveStyle({ ...DEFAULTS, proseCap: true, proseWidth })).toThrow(/proseWidth must be a whole number of columns from 40 to 200/)
   }
-  expect(resolveStyle({ proseCap: true, proseWidth: '80' }).proseWidth).toBe(80)
+  expect(resolveStyle({ ...DEFAULTS, proseCap: true, proseWidth: '80' }).proseWidth).toBe(80)
 })

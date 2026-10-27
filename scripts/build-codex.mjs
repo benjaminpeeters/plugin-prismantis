@@ -2,6 +2,7 @@ import { build } from 'esbuild'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { manifest } from './manifest.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const out = join(root, 'codex')
@@ -114,7 +115,6 @@ write('README.md', [
   '',
 ].join('\n'))
 
-const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin/plugin.json'), 'utf8'))
 mkdirSync(join(root, '.codex-plugin'), { recursive: true })
 writeFileSync(join(root, '.codex-plugin/plugin.json'), `${JSON.stringify({ name: manifest.name, version: manifest.version, description: `Themeable Codex replies: ${cc.PRESET_NAMES.length} prismantis syntax themes for code, inline code, table headers and mermaid, and a session note that gets tables, diagrams and figures into replies.`, hooks: './codex/hooks.json', skills: './codex/skills' }, null, 2)}\n`)
 

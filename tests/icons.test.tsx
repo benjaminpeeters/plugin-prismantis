@@ -15,9 +15,15 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await thinking.unmount()
   })
 
-  test(`toolIcon replaces a finished tool row's status glyph on ${surface}, with a space after it to keep a wide glyph off the edge`, { options: { toolIcon: '▪' } }, async $ => {
+  test(`toolIcon replaces a finished tool row's status glyph on ${surface}`, { options: { toolIcon: '▪' } }, async $ => {
     const ui = await $.ui.mount(row(surface))
-    expect(await ui.find({ type: 'Text', text: /^ ▪ $/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /^ ▪$/ })).toBeTruthy()
+    await ui.unmount()
+  })
+
+  test(`a Nerd Font toolIcon, a private use glyph, gets a space after it on ${surface} to keep it off the edge`, { options: { toolIcon: '' } }, async $ => {
+    const ui = await $.ui.mount(row(surface))
+    expect(await ui.find({ type: 'Text', text: /^  $/ })).toBeTruthy()
     await ui.unmount()
   })
 

@@ -12,6 +12,7 @@ import { PRESET_NAMES, PRESETS } from '../hooks/presets'
 import { resolveStyle } from '../hooks/theme'
 import { claudeAt, linksHttp } from './claude-version'
 import { clipboardEnv, recordCopies, recordToasts } from './clipboard-env'
+import { DEFAULTS } from './manifest-defaults'
 
 const hl = { numbers: true, paths: true }
 
@@ -986,7 +987,7 @@ test('file links on desktop draw as plain text, as before', async ($, on) => {
 for (const columns of [120, 34]) {
   test(`linked paths keep every width, wrap and table column at ${columns} columns`, async ($, on) => {
     const source = `${PATHS}\n\nקובץ ההגדרות ~/notes/todo.md נמצא כאן\n\n| a long path column | n |\n|---|---|\n| /srv/very/long/folder/name/that/wraps/file.txt | 1 |`
-    const plain = { ...resolveStyle({ rtl: 'warp' }), httpLinks: true, home: '/home/me', cwd: '/work/app' }
+    const plain = { ...resolveStyle({ ...DEFAULTS, rtl: 'warp' }), httpLinks: true, home: '/home/me', cwd: '/work/app' }
     const blocks = parse(source, hl)
     let drawnPlain: unknown
     let drawnLinked: unknown
@@ -2187,7 +2188,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
 }
 
 test('a clickable Bash-edits diff keeps its linked file title as text, since a Button holds no Link', async ($, on) => {
-  const style = { ...resolveStyle({}), pressPreview: true, httpLinks: true, fileLinks: 'file://', pathLinks: true, home: '/home/me', cwd: '/work/app' }
+  const style = { ...resolveStyle(DEFAULTS), pressPreview: true, httpLinks: true, fileLinks: 'file://', pathLinks: true, home: '/home/me', cwd: '/work/app' }
   const rows = Array.from({ length: 30 }, (_, i) => ({ mark: '+' as const, num: i + 1, text: `line ${i}`, hunk: 0 }))
   let drawn: unknown
   on('ui.render', ($, e) => {

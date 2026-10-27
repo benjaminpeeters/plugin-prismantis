@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ROOT, load } from './load.mjs'
+import { DEFAULTS } from './manifest.mjs'
 
 const { resolveStyle, reply } = await load()
 const demo = readFileSync(join(ROOT, 'docs/demo.md'), 'utf8')
@@ -23,7 +24,7 @@ let bad = 0
 mkdirSync(dir, { recursive: true })
 for (const [theme, rtl, name] of [...THEMES.map(t => [t, 'warp', t]), ['catppuccin-mocha', 'kitty', 'kitty']]) {
   const out = []
-  walk(reply(demo, resolveStyle({ theme, rtl }), 100), 0, out)
+  walk(reply(demo, resolveStyle({ ...DEFAULTS, theme, rtl }), 100), 0, out)
   const text = `${out.join('\n')}\n`
   const file = join(dir, `demo-${name}.txt`)
   if (process.argv.includes('--update') || !existsSync(file)) {

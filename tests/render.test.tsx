@@ -5,6 +5,7 @@ import { PRESETS } from '../hooks/presets'
 import { MARK, width } from '../hooks/render'
 import { resolveStyle } from '../hooks/theme'
 import { clipboardEnv, startSession } from './clipboard-env'
+import { DEFAULTS } from './manifest-defaults'
 
 const TABLE = [
   '| Service | Regions | Version |',
@@ -40,7 +41,7 @@ test('escaped pipes stay inside a cell', async () => {
 })
 
 test('user colors override the theme, bad colors are ignored', async () => {
-  const s = resolveStyle({ theme: 'catppuccin-mocha', tableHeaderColor: '#ff0000', numberColor: 'not a color', pathColor: 'cyan', linkColor: 'javascript:x' })
+  const s = resolveStyle({ ...DEFAULTS, theme: 'catppuccin-mocha', tableHeaderColor: '#ff0000', numberColor: 'not a color', pathColor: 'cyan', linkColor: 'javascript:x' })
   expect(s.theme.tableHeader).toBe('#ff0000')
   expect(s.theme.number).toBe(PRESETS['catppuccin-mocha'].number)
   expect(s.theme.path).toBe('cyan')
@@ -121,9 +122,9 @@ test('every preset defines every token with a valid color', async () => {
 })
 
 test('picks a named theme and falls back on unknown names', async () => {
-  expect(resolveStyle({ theme: 'dracula' }).theme.tableHeader).toBe('#f1fa8c')
-  expect(resolveStyle({ theme: 'neon' }).theme.tableHeader).toBe('#00e5ff')
-  expect(resolveStyle({ theme: 'nope' }).theme.tableHeader).toBe(PRESETS['catppuccin-mocha'].tableHeader)
+  expect(resolveStyle({ ...DEFAULTS, theme: 'dracula' }).theme.tableHeader).toBe('#f1fa8c')
+  expect(resolveStyle({ ...DEFAULTS, theme: 'neon' }).theme.tableHeader).toBe('#00e5ff')
+  expect(resolveStyle({ ...DEFAULTS, theme: 'nope' }).theme.tableHeader).toBe(PRESETS['catppuccin-mocha'].tableHeader)
 })
 
 const toolRow = (tool: string, input: unknown, extra: Partial<{ isRunning: boolean; isErrored: boolean; isInterrupted: boolean }> = {}) => ({
