@@ -538,6 +538,24 @@
       "default": "shown",
       "options": ["folded", "shown"]
     },
+    "promptFold": {
+      "type": "string",
+      "title": "Fold long prompts",
+      "description": "A prompt you wrote that runs past this many screen lines, a long line counting the lines it wraps to, shows its first lines and a +N more lines button that opens it; the expanded transcript (ctrl+o) shows it whole, and a paste counts as the three lines its closed frame takes, opened or not. With promptStyle off, Claude Code's own row draws those first lines, a paste as its plain lines, with a show more button under it; opened, the row is Claude Code's own again, which cuts a long prompt in the middle itself (fork). A whole number from 1 to 1000; empty never folds; an invalid value stops prismantis loading, with this option named.",
+      "default": "20"
+    },
+    "replyFold": {
+      "type": "string",
+      "title": "Fold long replies",
+      "description": "A text Claude writes that runs past this many screen lines, a long line counting the lines it wraps to at the window's width (proseWidth for prose while proseCap is on), a table or diagram counting its source lines, not the rows it draws, and a blank line between blocks as one, shows the blocks that start within the limit and those that end within its last replyFoldTail lines, each whole (a long code block keeps its own fold), with a +N more lines button between them that opens the middle; ctrl+o does not open it (fork). Each text between two tool calls folds on its own; a hand-off card at its end stays drawn, and the reply's copy button still copies the whole text. A whole number from 1 to 1000; empty never folds; an invalid value stops prismantis loading, with this option named.",
+      "default": "60"
+    },
+    "replyFoldTail": {
+      "type": "string",
+      "title": "Lines kept at the end of a folded reply",
+      "description": "How many lines at the end of a text folded by replyFold stay drawn after its +N more lines button, counted as replyFold counts them (fork). A whole number from 0 to 1000, 0 keeping none; a text whose first replyFold and last replyFoldTail lines cover it all is not folded. An invalid value stops prismantis loading, with this option named.",
+      "default": "20"
+    },
     "renderLog": {
       "type": "boolean",
       "title": "Render log",

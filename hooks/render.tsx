@@ -1,9 +1,10 @@
 import type { ElementTable, RenderElement, RenderNode, TextHoverProps } from 'claude-code'
 
 import { isDraftLang } from './draft'
-import { isHandoffLang } from './handoff'
+import { isHandoffCard, isHandoffLang } from './handoff'
+import { isFigureLang } from './figure'
 import { tableHtml, tableText } from './html'
-import type { Block, Inline } from './markdown'
+import type { Block, Inline, ListItem } from './markdown'
 import { mathOf } from './latex'
 import { CONTROL, displayText, inlineText, isWebLink, nestedBlocks, texText } from './markdown'
 import type { Flow } from './rtl'
@@ -414,37 +415,58 @@ const mostLines = (text: string, w: number): number => (text.match(/\S+/g)?.leng
 const textRows = (text: string, w: number): number =>
   text.split('\n').reduce((sum, line) => sum + (width(line) <= w ? 1 : mostLines(line, Math.max(1, w))), 0)
 
-const heightOf = (blocks: Block[], w: number): number => blocks.reduce((sum, block, b) => sum + (b ? 1 : 0) + blockHeight(block, w), 0)
+type Measure = {
+  text: (text: string, w: number) => number
+  heading: (block: Extract<Block, { kind: 'heading' }>, w: number) => number
+  code: (block: Extract<Block, { kind: 'code' }>, w: number) => number
+  table: (block: Extract<Block, { kind: 'table' }>, w: number) => number
+  listPad: (item: ListItem) => number
+  listHead: (block: Extract<Block, { kind: 'list' }>, w: number) => number
+}
 
-const blockHeight = (block: Block, w: number): number => {
+const heightWith = (m: Measure, blocks: Block[], w: number): number => blocks.reduce((sum, block, b) => sum + (b ? 1 : 0) + blockWith(m, block, w), 0)
+
+const blockWith = (m: Measure, block: Block, w: number): number => {
   switch (block.kind) {
     case 'heading':
-      return 2 * textRows(displayText(block.inline), w - 4) + 2
+      return m.heading(block, w)
     case 'paragraph':
-      return textRows(displayText(block.inline), w)
+      return m.text(displayText(block.inline), w)
     case 'list':
       return block.items.reduce((sum, item) => {
-        const pad = item.depth * 2 + item.marker.length + 4
-        return sum + textRows(displayText(item.inline), w - pad) + (item.blocks ? heightOf(item.blocks, w - pad) + 1 : 0)
-      }, textRows(`${'━'.repeat(20)} ${block.items.length}/${block.items.length} done`, w))
+        const pad = m.listPad(item)
+        return sum + m.text(displayText(item.inline), w - pad) + (item.blocks ? heightWith(m, item.blocks, w - pad) + 1 : 0)
+      }, m.listHead(block, w))
     case 'code':
-      return block.lines.reduce((sum, line) => sum + textRows(line, w - 8), 3)
-    case 'table': {
-      const { natural, words } = tableSize(block)
-      const widths = columnWidths(natural, w - 4, 3, words)
-      const tallest = (cells: Inline[][]) => Math.max(1, ...widths.map((cw, c) => textRows(displayText(cells[c] ?? []), cw)))
-      return block.rows.reduce((sum, row) => sum + 1 + tallest(row), 4 + tallest(block.header))
-    }
+      return m.code(block, w)
+    case 'table':
+      return m.table(block, w)
     case 'quote':
-      return Math.max(1, heightOf(block.blocks, w - 2))
+      return Math.max(1, heightWith(m, block.blocks, w - 2))
     case 'alert':
-      return 3 + heightOf(block.blocks, w - 4)
+      return 3 + heightWith(m, block.blocks, w - 4)
     case 'rule':
       return 1
     case 'notes':
-      return block.notes.reduce((sum, note) => sum + textRows(`${note.mark} ${displayText(note.inline)}`, w), 1)
+      return block.notes.reduce((sum, note) => sum + m.text(`${note.mark} ${displayText(note.inline)}`, w), 1)
   }
 }
+
+const UPPER_BOUND: Measure = {
+  text: textRows,
+  heading: (block, w) => 2 * textRows(displayText(block.inline), w - 4) + 2,
+  code: (block, w) => block.lines.reduce((sum, line) => sum + textRows(line, w - 8), 3),
+  table: (block, w) => {
+    const { natural, words } = tableSize(block)
+    const widths = columnWidths(natural, w - 4, 3, words)
+    const tallest = (cells: Inline[][]) => Math.max(1, ...widths.map((cw, c) => textRows(displayText(cells[c] ?? []), cw)))
+    return block.rows.reduce((sum, row) => sum + 1 + tallest(row), 4 + tallest(block.header))
+  },
+  listPad: item => item.depth * 2 + item.marker.length + 4,
+  listHead: (block, w) => textRows(`${'━'.repeat(20)} ${block.items.length}/${block.items.length} done`, w),
+}
+
+const heightOf = (blocks: Block[], w: number): number => heightWith(UPPER_BOUND, blocks, w)
 
 const wrapInline = (nodes: Inline[], w: number): Inline[][] => {
   const text = inlineText(nodes)
@@ -1252,7 +1274,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     }, 0)
   const fitted = (parts: (RenderElement | null | undefined)[]): RenderElement[] =>
     parts.reduce<RenderElement[]>((kept, part) => (part && (!kept.length || reserved([...kept, part]) <= columns) ? [...kept, part] : kept), [])
-  const scopeOf = (button: RenderElement): string => `copy:${style.noteKey ?? ''}:${keyOf(button)}`
+  const scopeOf = (button: RenderElement): string => `copy:${style.noteKey ?? ''}${style.copyPart === undefined ? '' : `.${style.copyPart}`}:${keyOf(button)}`
   const floating = (kept: RenderElement[], low = false, start = false): Float => {
     const scope = scopeOf(kept[0]!)
     if (style.copyButtonStyle === 'icon' && kept.length === 1 && kept[0]!.type === 'Button') {
@@ -3030,11 +3052,110 @@ const PASTE = /<pasted_content id="([^"]*)">\n?([\s\S]*?)\n?<\/pasted_content id
 
 export type DrawPaste = (body: string, key: string) => RenderElement
 
+export type DrawFold = (hidden: number) => NonNullable<ReturnType<Fold>>
+
+type ReplyView = { body: Block[]; rest: Block[] }
+
+type ReplyFold = { folded: ReplyView; opened: ReplyView; hidden: number }
+
+const PASTE_ROWS = 3
+
+const wrapText = (line: string, columns: number): string[] => wrapRanges(line, Math.max(1, columns)).map(([a, b]) => line.slice(a, b))
+
+const wrappedCount = (text: string, columns: number): number => wrapRanges(text, Math.max(1, columns)).length
+
+const plainPromptRows = (typed: string, stamp: string): string[] => {
+  const rows = typed.replace(PASTE, (_, _id, body: string) => body).replace(/^\s*\n/, '').trimEnd().split('\n')
+  return [`${stamp}${rows[0]}`, ...rows.slice(1)]
+}
+
+const cutRow = (wrapped: string[], keep: number, whole: string): string => (keep < wrapped.length ? wrapped.slice(0, keep).join('\n') : whole)
+
+const foldBudget = (heights: number[], limit: number, whole: (i: number) => boolean): { keep: number[]; hidden: number } | null => {
+  const total = heights.reduce((sum, h) => sum + h, 0)
+  if (total <= limit) return null
+  let left = limit
+  const keep = heights.map((h, i) => {
+    const room = whole(i) && h > left ? 0 : Math.min(h, left)
+    left = room < h ? 0 : left - room
+    return room
+  })
+  return { keep, hidden: total - keep.reduce((sum, k) => sum + k, 0) }
+}
+
+export const foldPlainPrompt = (style: Style, typed: string, stamp: string, columns: number): { text: string; hidden: number } | null => {
+  if (style.promptFold === null) return null
+  const rows = plainPromptRows(typed, stamp)
+  const wrapped = rows.map(row => wrapText(row, columns))
+  const budget = foldBudget(wrapped.map(lines => lines.length), style.promptFold, () => false)
+  if (budget === null) return null
+  const kept = rows.flatMap((row, i) => {
+    const keep = budget.keep[i]!
+    return keep === 0 ? [] : [cutRow(wrapped[i]!, keep, row)]
+  })
+  return { text: kept.join('\n'), hidden: budget.hidden }
+}
+
+const drawnAsPicture = (style: Style, block: Extract<Block, { kind: 'code' }>): boolean => {
+  const lang = block.lang.toLowerCase()
+  if (isFigureLang(lang) || (style.mermaid && lang === 'mermaid') || (style.latex && lang === 'math')) return true
+  return !block.isOpen && ((style.handoff && isHandoffLang(lang)) || (style.drafts && isDraftLang(lang)))
+}
+
+const codeLines = (style: Style, block: Extract<Block, { kind: 'code' }>, columns: number): number => {
+  const folds = block.lines.length > FOLD_AT && !drawnAsPicture(style, block)
+  const shown = folds ? block.lines.slice(0, FOLD_SHOW) : block.lines
+  return shown.reduce((sum, line) => sum + wrappedCount(line, columns), folds ? 2 : 1)
+}
+
+const headingLines = (style: Style, block: Extract<Block, { kind: 'heading' }>, columns: number): number => {
+  const rows = wrappedCount(displayText(block.inline), columns - 4)
+  if (style.headingStyle !== 'banner' || block.level > 2) return rows
+  return rows + (block.level === 1 ? 2 : 1)
+}
+
+const foldMeasure = (style: Style): Measure => ({
+  text: (text, w) => wrappedCount(text, Math.min(w, style.proseWidth ?? w)),
+  heading: (block, w) => headingLines(style, block, w),
+  code: (block, w) => codeLines(style, block, w),
+  table: block => block.raw.split('\n').length,
+  listPad: item => item.depth * 2 + width(item.marker) + 1,
+  listHead: () => 0,
+})
+
+export const foldReply = (style: Style, blocks: Block[], columns: number): ReplyFold | null => {
+  if (style.replyFold === null) return null
+  const { lines: limit, tail } = style.replyFold
+  const last = blocks[blocks.length - 1]
+  const card = style.handoff && last !== undefined && isHandoffCard(last) ? [last] : []
+  const body = blocks.slice(0, blocks.length - card.length)
+  const measure = foldMeasure(style)
+  const sizes = body.map(block => blockWith(measure, block, columns))
+  const starts = sizes.reduce<number[]>((acc, _, i) => [...acc, i === 0 ? 1 : acc[i - 1]! + sizes[i - 1]! + 1], [])
+  const ends = starts.map((start, i) => start + sizes[i]! - 1)
+  const total = ends[ends.length - 1] ?? 0
+  const at = starts.filter(start => start <= limit).length
+  const from = ends.filter(end => end <= total - tail).length
+  if (from <= at) return null
+  return { folded: { body: body.slice(0, at), rest: [...body.slice(from), ...card] }, opened: { body, rest: card }, hidden: ends[from - 1]! - starts[at]! + 1 }
+}
+
+const promptFolding = (style: Style, rows: string[], flows: (Flow | null)[], pasted: (line: string) => boolean, told: (line: string) => string, room: number, fold: DrawFold | undefined) => {
+  if (fold === undefined || style.promptFold === null) return null
+  const wrapped = rows.map(line => (pasted(line) ? [] : wrapText(told(line), room)))
+  const heights = rows.map((line, i) => (pasted(line) ? PASTE_ROWS : flows[i]?.lines.length ?? wrapped[i]!.length))
+  const budget = foldBudget(heights, style.promptFold, i => pasted(rows[i]!))
+  if (budget === null) return null
+  const toggle = fold(budget.hidden)
+  const keep = toggle.folded ? budget.keep : heights
+  return { keep, texts: rows.map((line, i) => cutRow(wrapped[i]!, keep[i]!, told(line))), element: toggle.element }
+}
+
 const boxedPrompt = (style: Style) => style.promptStyle === 'bubble' || style.promptStyle === 'wide'
 
 const widePrompt = (style: Style, hebrew: boolean) => style.promptStyle === 'wide' || (hebrew && mirrored(style))
 
-export const renderUserPrompt = (el: ElementTable, style: Style, typed: string, columns: number, time?: string, paste?: DrawPaste): RenderElement => {
+export const renderUserPrompt = (el: ElementTable, style: Style, typed: string, columns: number, time?: string, paste?: DrawPaste, fold?: DrawFold): RenderElement => {
   const { Box, Text } = el
   const pastes: string[] = []
   const text = typed.replace(PASTE, (_, _id, body: string) => `\0${pastes.push(body) - 1}\0`)
@@ -3043,17 +3164,22 @@ export const renderUserPrompt = (el: ElementTable, style: Style, typed: string, 
   const t = style.theme
   const color = style.promptStyle === 'chevron' ? t.accent : t.heading
   const rows = text.split('\n')
-  const lines = rows.map(line => (own(line) === undefined ? flowOf(style, [{ kind: 'text', text: told(line) }], columns - 4 - (time === undefined ? 0 : time.length + 1)) : null))
+  const room = columns - 4 - (time === undefined ? 0 : time.length + 1)
+  const lines = rows.map(line => (own(line) === undefined ? flowOf(style, [{ kind: 'text', text: told(line) }], room) : null))
   const hebrew = lines.some(l => l?.base === 'R')
   const rtl = hebrew && !mirrored(style)
+  const folding = promptFolding(style, rows, lines, line => own(line) !== undefined, told, room, fold)
   const body = (
     <Box flexDirection="column" {...(rtl ? { alignItems: 'flex-end' as const } : {})}>
       {rows.map((line, i) => {
+        const keep = folding?.keep[i]
+        if (keep === 0) return null
         const pasted = own(line)
         if (pasted !== undefined) return paste!(pasted, `paste${i}`)
         const flow = lines[i]
-        return flow ? renderFlow(el, style, flow.lines, `p${i}`, { color, bold: style.promptStyle === 'chevron' }) : <Text key={`p${i}`} color={color} bold={style.promptStyle === 'chevron'}>{told(line)}</Text>
+        return flow ? renderFlow(el, style, flow.lines.slice(0, keep), `p${i}`, { color, bold: style.promptStyle === 'chevron' }) : <Text key={`p${i}`} color={color} bold={style.promptStyle === 'chevron'}>{folding?.texts[i] ?? told(line)}</Text>
       })}
+      {folding?.element ?? null}
     </Box>
   )
   const stamp = time === undefined ? null : <Text color={t.codeComment}>{rtl ? ` ${time}` : `${time} `}</Text>

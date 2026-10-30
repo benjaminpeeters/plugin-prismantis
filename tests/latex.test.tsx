@@ -582,7 +582,7 @@ test('the formula store never drops a formula a draw still wants, even past 50',
   expect(Object.keys(kept)).toEqual(keys(0, 51))
 })
 
-test('a reply that streams in more formulas than the store keeps renders each formula once', { timeoutMs: 20000 }, async ($, on) => {
+test('a reply that streams in more formulas than the store keeps renders each formula once', { timeoutMs: 20000, options: { replyFold: '' } }, async ($, on) => {
   mock.env(on, KITTY)
   const clock = mock.clock(on)
   const runs = ratex(on)

@@ -30,6 +30,7 @@ export type Style = {
   narration?: boolean
   inside?: 'quote' | 'alert'
   noteKey?: string
+  copyPart?: 'tail'
   pressPreview?: boolean
   diffStyle: 'card' | 'full' | 'marks' | 'bar'
   diffWidth: 'fit' | 'full'
@@ -44,6 +45,8 @@ export type Style = {
   dimProse?: true
   proseWidth: number | null
   toolWidth: number | null
+  promptFold: number | null
+  replyFold: { lines: number; tail: number } | null
   editRow: 'path' | 'file'
   diffBorder: boolean
   pieStyle: 'round' | 'bars'
@@ -95,7 +98,7 @@ export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte
 
 export const FORK_OPTIONS = [
   'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
-  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'runIcon', 'toolResults', 'renderLog', 'turnWord', 'replyCopy',
+  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'runIcon', 'toolResults', 'promptFold', 'replyFold', 'replyFoldTail', 'renderLog', 'turnWord', 'replyCopy',
 ] as const
 
 export type ForkOption = (typeof FORK_OPTIONS)[number]
@@ -137,16 +140,27 @@ const tintShare = (options: PluginOptions, key: ForkOption, max: number): number
   return Number.isFinite(percent) && percent >= 0 && percent <= max ? percent / 100 : fail(rule, options[key])
 }
 
-const columnsFrom = (value: unknown, max: number, rule: string): number => {
+const wholeNumber = (value: unknown, min: number, max: number, rule: string): number => {
   const n = typeof value === 'string' ? Number(value) : value
-  return typeof n === 'number' && Number.isInteger(n) && n >= 40 && n <= max ? n : fail(rule, value)
+  return typeof n === 'number' && Number.isInteger(n) && n >= min && n <= max ? n : fail(rule, value)
 }
 
-const proseColumns = (value: unknown): number => columnsFrom(value, 200, 'proseCap is on, so proseWidth must be a whole number of columns from 40 to 200')
+const proseColumns = (value: unknown): number => wholeNumber(value, 40, 200, 'proseCap is on, so proseWidth must be a whole number of columns from 40 to 200')
+
+const emptyOrWhole = (options: PluginOptions, key: ForkOption, min: number, max: number, rule: string): number | null =>
+  numeric(options, key, rule) === '' ? null : wholeNumber(options[key], min, max, rule)
 
 const toolColumns = (options: PluginOptions): number | null => {
   const rule = 'toolWidth must be empty or a whole number of columns from 40 to 400'
-  return numeric(options, 'toolWidth', rule) === '' ? null : columnsFrom(options.toolWidth, 400, rule)
+  return emptyOrWhole(options, 'toolWidth', 40, 400, rule)
+}
+
+const foldLines = (options: PluginOptions, key: ForkOption): number | null =>
+  emptyOrWhole(options, key, 1, 1000, `${key} must be empty or a whole number of lines from 1 to 1000`)
+
+const tailLines = (options: PluginOptions): number => {
+  const rule = 'replyFoldTail must be a whole number of lines from 0 to 1000'
+  return emptyOrWhole(options, 'replyFoldTail', 0, 1000, rule) ?? fail(rule, options.replyFoldTail)
 }
 
 export const pickTheme = (value: unknown, random = Math.random): string => {
@@ -164,6 +178,8 @@ export const resolveStyle = (options: PluginOptions): Style => {
   const rtl = pick(options.rtl, ['auto', 'off', ...(Object.keys(TERMINALS) as Terminal[])], 'auto')
   const diffTint = tintShare(options, 'diffTint', 60)
   const diffWordTint = tintShare(options, 'diffWordTint', 90)
+  const replyLines = foldLines(options, 'replyFold')
+  const replyTail = tailLines(options)
 
   return {
     theme: { ...base, ...fromFields },
@@ -188,6 +204,8 @@ export const resolveStyle = (options: PluginOptions): Style => {
     stepMark: flag(options, 'stepMark'),
     proseWidth: flag(options, 'proseCap') ? proseColumns(options.proseWidth) : null,
     toolWidth: toolColumns(options),
+    promptFold: foldLines(options, 'promptFold'),
+    replyFold: replyLines === null ? null : { lines: replyLines, tail: replyTail },
     editRow: choice(options, 'editRow', ['path', 'file'] as const),
     pieStyle: pick(options.pieStyle, ['round', 'bars'] as const, 'round'),
     highlightNumbers: options.highlightNumbers !== false,

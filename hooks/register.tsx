@@ -18,8 +18,8 @@ import type { TurnWindow } from '../types'
 import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turns'
 import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
-import type { CopyButton, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import { MARK, callEnding, columnsOf, isAsk, withStepRule, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import type { CopyButton, DrawFold, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
+import { MARK, callEnding, columnsOf, isAsk, withStepRule, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -356,7 +356,13 @@ const copyTable = async ($: EngineInterface, backend: ClipboardBackend, html: st
   return result.exitCode === 0 ? null : result.stderr.trim() || command.failure
 }
 
-const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[], faces = false): Fold => (id, hidden, key, look) => {
+function folder($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open: string[], faces?: boolean): (...args: Parameters<Fold>) => NonNullable<ReturnType<Fold>>
+function folder($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[], faces?: boolean): Fold
+function folder($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[], faces = false): Fold {
+  return (id, hidden, key, look) => foldButton($, el, open, faces, id, hidden, key, look)
+}
+
+const foldButton = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open: string[] | undefined, faces: boolean, ...[id, hidden, key, look]: Parameters<Fold>): ReturnType<Fold> => {
   if (!open) return null
   const folded = !open.includes(id)
   const label = folded ? look?.label ?? `+${hidden} more lines` : look?.close ?? 'show less'
@@ -370,11 +376,36 @@ const rowToggles = (style: Style): boolean => style.diffToggle === 'row' && styl
 
 const RESULT_LOOK: FoldLook = { label: 'show result', close: 'hide result', whole: true }
 
+const MORE_LOOK: FoldLook = { label: 'show more' }
+
+const foldedRow = async ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, id: string, cut: { text: string; hidden: number }, whole: string, draw: (text: string) => Promise<RenderElement>): Promise<RenderElement> => {
+  const toggle = folder($, el, await read($, unfolded))(id, cut.hidden, 'promptfold', MORE_LOOK)
+  const row = await draw(toggle.folded ? cut.text : whole)
+  return <el.Box flexDirection="column">{row}{toggle.element}</el.Box>
+}
+
+type ReplyNotes = { id: string; press: boolean; wholeReply: Block[] }
+
+type Rest = { blocks: Block[]; columns: number; reply: string | undefined; open: string[]; notes: ReplyNotes }
+
+const drawRest = async ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, latex: LatexSession, probes: Probes, drawn: Style, surface: string, rest: Rest): Promise<RenderElement> => {
+  const math = await mathOfBlocks($, latex, surface, rest.blocks)
+  const pictures = await picturesOf($, latex.style, probes, surface, rest.blocks)
+  return <el.Box key="tail" flexDirection="column" rowGap={1}>{drawMarkdown($, el, { ...drawn, copyPart: 'tail' }, rest.blocks, rest.columns, math, pictures, rest.reply, rest.open, rest.notes)}</el.Box>
+}
+
+const replyParts = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: Block[], id: string, columns: number, open: string[]) => {
+  const folding = foldReply(style, blocks, columns)
+  if (folding === null) return { body: blocks, rest: null, toggle: null }
+  const toggle = folder($, el, open)(`${id}:reply`, folding.hidden, 'replyfold')
+  return { ...(toggle.folded ? folding.folded : folding.opened), toggle }
+}
+
 const foldsResult = (style: Style, tool: string, failed: boolean): boolean => style.toolResults === 'folded' && resultAside(style, tool) && !failed
 
 const foldsError = (style: Style, tool: string): boolean => (tool === 'Edit' || tool === 'Write') && style.editErrors === 'folded' && style.toolOutput !== 'quiet' && rowToggles(style)
 
-const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, math: Map<number, Typeset> = new Map(), pictures: Map<number, Picture> = new Map(), reply?: string, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
+const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, math: Map<number, Typeset> = new Map(), pictures: Map<number, Picture> = new Map(), reply?: string, open?: string[], notes?: ReplyNotes): RenderElement[] => {
   const { Button } = el
   const copy = (text: string | (() => string), key: string, label = '⧉ copy', html?: () => string) => {
     const copied = async (surface: RenderSurface): Promise<string> => {
@@ -423,7 +454,7 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       drawn.set(i, { element: <Image key={`b${i}`} source={{ png: picture.png }} columns={fit.columns} rows={fit.rows} alt={picture.alt} /> })
     }
   }
-  const tip = notes?.press ? noteTip(blocks, text => void $.ui.toast(text)) : undefined
+  const tip = notes?.press ? noteTip(notes.wholeReply, text => void $.ui.toast(text)) : undefined
   const elements = renderBlocks(el, notes ? { ...style, noteKey: instanceKey(notes.id) } : style, blocks, columns, drawMath(el, style, blocks, drawn), copy, folder($, el, open), tip)
   const button = reply === undefined ? null : copy(reply, 'reply', '⧉ copy reply')
   if (!button) return elements
@@ -950,7 +981,7 @@ export const register: Register = (on, options) => {
     const pictures = await picturesOf($, style, probes, e.surface, blocks)
     const open = await read($, unfolded)
     const surfaceStyle = await withFoundPaths($, pathChecks, forSurface(fit(e.viewport), e.surface, reach), blocks)
-    return <Box flexDirection="column" rowGap={1} {...fullWidth(e.props.text)}>{drawMarkdown($, el, surfaceStyle, blocks, columnsOf(e.viewport), math, pictures, undefined, open, { id: e.requestId, press: reach.marks })}</Box>
+    return <Box flexDirection="column" rowGap={1} {...fullWidth(e.props.text)}>{drawMarkdown($, el, surfaceStyle, blocks, columnsOf(e.viewport), math, pictures, undefined, open, { id: e.requestId, press: reach.marks, wholeReply: blocks })}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
@@ -960,7 +991,13 @@ export const register: Register = (on, options) => {
     if (!own) return next(e)
     const at = style.clock === 'off' ? undefined : sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now(), style.clock)
-    if (style.promptStyle === 'off') return time === undefined ? next(e) : next({ ...e, props: { ...e.props, text: `[${time}] ${e.props.text}` } })
+    if (style.promptStyle === 'off') {
+      const stamp = time === undefined ? '' : `[${time}] `
+      const whole = `${stamp}${e.props.text}`
+      const draw = (text: string) => next({ ...e, props: { ...e.props, text } })
+      const cut = e.props.isExpanded ? null : foldPlainPrompt(style, e.props.text, stamp, columnsOf(e.viewport))
+      return cut === null ? draw(whole) : foldedRow($, $.ui.resolve(e), `${e.requestId}:prompt`, cut, whole, draw)
+    }
     const el = $.ui.resolve(e)
     const drawn = forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style))
     const columns = columnsOf(e.viewport)
@@ -977,7 +1014,8 @@ export const register: Register = (on, options) => {
         </el.Box>
       )
     }
-    return renderUserPrompt(el, drawn, e.props.text, columns, time, paste)
+    const fold: DrawFold | undefined = e.props.isExpanded ? undefined : hidden => folder($, el, open)(`${e.requestId}:prompt`, hidden, 'promptfold')
+    return renderUserPrompt(el, drawn, e.props.text, columns, time, paste, fold)
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
@@ -987,25 +1025,28 @@ export const register: Register = (on, options) => {
     const { Box, Text } = el
     const narration = style.toolStyle === 'tree-bold' && blocks.length === 1 && blocks[0]!.kind === 'paragraph'
     const reach = await linkReach($, probes, style)
-    const math = await mathOfBlocks($, latex, e.surface, blocks)
-    const pictures = await picturesOf($, style, probes, e.surface, blocks)
-    const surfaceStyle = await withFoundPaths($, pathChecks, forSurface(fit(e.viewport), e.surface, reach), blocks)
     const open = await read($, unfolded)
+    const columns = columnsOf(e.viewport)
+    const { body, rest, toggle } = replyParts($, el, style, blocks, e.requestId, columns, open)
+    const math = await mathOfBlocks($, latex, e.surface, body)
+    const pictures = await picturesOf($, style, probes, e.surface, body)
+    const surfaceStyle = await withFoundPaths($, pathChecks, forSurface(fit(e.viewport), e.surface, reach), blocks)
     // With replyCopy: footer, the terminal copies the whole reply from its turn footer, so a message carries no button of its own.
     const fromFooter = style.replyCopy === 'footer' && e.surface === 'terminal'
     const reply = !fromFooter && (blocks.length > 1 || hasRtl(e.props.text)) ? e.props.text : undefined
     const corner = reply !== undefined && markerRoom(surfaceStyle) > 0
     const isSummary = e.props.isSummary === true
     const isStepped = await isStepRow($, style, e.requestId, e.props.text, isSummary)
-    const columns = columnsOf(e.viewport)
     const drawn: Style = { ...surfaceStyle, ...(narration ? { narration } : {}), ...(isStepped && isSummary ? { dimProse: true } : {}) }
+    const notes = { id: e.requestId, press: reach.marks, wholeReply: blocks }
+    const tail = rest === null || rest.length === 0 ? null : await drawRest($, el, latex, probes, drawn, e.surface, { blocks: rest, columns, reply, open, notes })
     const message = (
       <Box key="msg" flexDirection="row">
         <Box width={2} flexShrink={0}>
           <Text color={style.theme.replyBullet ?? style.theme.accent}>{e.props.isFirstOfReply ? (isSummary ? style.thinkingIcon : style.replyIcon) : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
-          {drawMarkdown($, el, drawn, blocks, columns, math, pictures, reply, open, { id: e.requestId, press: reach.marks })}
+          {[...drawMarkdown($, el, drawn, body, columns, math, pictures, tail === null ? reply : undefined, open, notes), toggle?.element ?? null, tail]}
         </Box>
         {corner ? <Box width={MARK} flexShrink={0} /> : null}
       </Box>

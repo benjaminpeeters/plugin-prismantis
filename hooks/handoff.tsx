@@ -84,6 +84,8 @@ export const parseHandoff = (lines: readonly string[]): Handoff => {
 const isHandoff = (block: Block): block is Extract<Block, { kind: 'code' }> =>
   block.kind === 'code' && isHandoffLang(block.lang) && !block.isOpen
 
+export const isHandoffCard = (block: Block): boolean => isHandoff(block)
+
 // Every finished ```handoff block of a reply becomes one, after the last other block, so the
 // person finds what to run in one place, at the end, whatever the order Claude wrote it in.
 export const handoffLast = (blocks: Block[]): Block[] => {
