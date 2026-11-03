@@ -19,7 +19,8 @@ import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turn
 import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawFold, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import { MARK, callEnding, columnsOf, isAsk, withStepRule, renderAnswers, renderResultAside, renderTaskRow, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import type { AgentColors, AsideMessage, LaunchHint, SenderColors, ToolRow } from './render'
+import { MARK, agentDefinition, callEnding, continuesLaunch, launchedInBackground, columnsOf, hintAside, isAsk, messageAside, peerSender, record, subagentType, rememberBounded, withStepRule, renderAnswers, renderHintAside, asideResult, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -701,6 +702,80 @@ const logRender = async ($: EngineInterface, log: RenderLog, line: string): Prom
   $.clock.after(500, () => void flushRenderLog($, log))
 }
 
+const readAgentFolder = async ($: EngineInterface, dir: string, prefix: string, into: Map<string, string>): Promise<void> => {
+  if (!(await $.fs.exists(dir))) return
+  for (const entry of await $.fs.list(dir)) {
+    if (!(entry.kind === 'file' || entry.isLink) || !entry.name.endsWith('.md')) continue
+    const found = agentDefinition(await $.fs.read(`${dir}/${entry.name}`), entry.name)
+    if (found.color) into.set(`${prefix}${found.name}`, found.color)
+  }
+}
+
+const installedPlugins = async ($: EngineInterface, home: string): Promise<[string, string][]> => {
+  const path = `${home}/.claude/plugins/installed_plugins.json`
+  if (!(await $.fs.exists(path))) return []
+  const plugins = record(record(JSON.parse(await $.fs.read(path))).plugins)
+  return Object.entries(plugins).flatMap(([key, installs]) => {
+    const where = Array.isArray(installs) ? record(installs[0]).installPath : undefined
+    return typeof where === 'string' ? [[key.split('@')[0]!, where] as [string, string]] : []
+  })
+}
+
+const loadAgentColors = async ($: EngineInterface, project: string): Promise<AgentColors> => {
+  const home = await $.env.get('HOME')
+  if (!home) throw new Error('HOME is not set')
+  const colors = new Map<string, string>()
+  for (const [plugin, root] of await installedPlugins($, home)) await readAgentFolder($, `${root}/agents`, `${plugin}:`, colors)
+  await readAgentFolder($, `${home}/.claude/agents`, '', colors)
+  await readAgentFolder($, `${project}/.claude/agents`, '', colors)
+  return colors
+}
+
+type AgentColorCache = { project?: string; loading?: Promise<AgentColors> }
+
+const colorsOf = async ($: EngineInterface, cache: AgentColorCache): Promise<AgentColors> => {
+  const project = await $.session.root()
+  if (cache.loading === undefined || cache.project !== project) {
+    cache.project = project
+    cache.loading = loadAgentColors($, project).catch((err: unknown) => {
+      $.ui.toast(`prismantis could not read the agent colors, so subagent types draw uncolored: ${err instanceof Error ? err.message : String(err)}`)
+      return new Map()
+    })
+  }
+  return cache.loading
+}
+
+type LaunchCall = Pick<ToolRow, 'tool' | 'input' | 'output' | 'isRunning' | 'isErrored' | 'isInterrupted'> & { tool_use_id: string }
+
+const continuesRun = async ($: EngineInterface, runs: Map<string, boolean>, id: string): Promise<boolean> => {
+  if (!runs.has(id)) {
+    const found = continuesLaunch(await $.session.messages(), id)
+    if (found === undefined) return false
+    rememberBounded(runs, id, found)
+  }
+  return runs.get(id) === true
+}
+
+const launchOf = async ($: EngineInterface, cache: AgentColorCache, runs: Map<string, boolean>, style: Style, call: LaunchCall): Promise<{ launch?: LaunchHint }> => {
+  if (style.toolStyle !== 'chat' || !launchedInBackground(call)) return {}
+  const type = subagentType(call.input)
+  const badgeColor = type === undefined ? undefined : (await colorsOf($, cache)).get(type)
+  return { launch: { continues: await continuesRun($, runs, call.tool_use_id), ...(badgeColor ? { badgeColor } : {}) } }
+}
+
+const peerColors = async ($: EngineInterface, cache: AgentColorCache, style: Style, message: AsideMessage): Promise<SenderColors> => {
+  if (peerSender(style, message) === undefined) return new Map()
+  const colors = await colorsOf($, cache)
+  const senders = new Map<string, string>()
+  for (const agent of await $.agent.list()) {
+    const color = colors.get(agent.type)
+    if (!color) continue
+    senders.set(agent.type, color)
+    if (agent.name) senders.set(agent.name, color)
+  }
+  return senders
+}
+
 export const register: Register = (on, options) => {
   on('engine.create', async (_$, e, next) => ({ ...(await next(e)), prismantis: { markdown: async () => undefined } }))
   if (options.enabled === false) return
@@ -721,6 +796,8 @@ export const register: Register = (on, options) => {
   const shared = new Map<string, ReturnType<typeof parse>>()
   let terminal: Terminal | null = null
   const fit = (viewport?: { isFullscreen?: boolean }): Style => (terminal === 'apple-terminal' && viewport?.isFullscreen ? { ...style, shape: 'inverse' } : style)
+  const agentColors: AgentColorCache = {}
+  const launchRuns = new Map<string, boolean>()
   let prompts = 0
   const latex: LatexSession = { style, color: ratexColor(style.theme.diagramText ?? style.theme.codeText ?? '#808080'), pending: new Set(), wanted: new Set(), batch: [], queue: Promise.resolve() }
   const picked: Picked = { theme: firstTheme, options, latex }
@@ -736,16 +813,23 @@ export const register: Register = (on, options) => {
   const shellCommands = new Map<string, string>()
   const noteCommand = (id: string | undefined, tool: string, input: unknown) => {
     const command = tool === 'Bash' && input !== null && typeof input === 'object' ? (input as { command?: unknown }).command : undefined
-    if (!id || typeof command !== 'string') return
-    shellCommands.delete(id)
-    shellCommands.set(id, command)
-    if (shellCommands.size > 500) shellCommands.delete(shellCommands.keys().next().value!)
+    if (typeof command === 'string') rememberBounded(shellCommands, id, command)
   }
+  const callTools = new Map<string, string>()
+  const noteTool = (id: string | undefined, tool: string) => rememberBounded(callTools, id, tool)
   let firstEdit: string | undefined
   if (options.toolRows !== false) {
+    on('ui.render', { component: 'ToolProgress' }, async ($, e, next) => {
+      const tool = callTools.get(e.props.tool_use_id)
+      if (tool === undefined || !hintAside(style, e.props, tool)) return next(e)
+      return renderHintAside($.ui.resolve(e), fit(e.viewport), e.viewport?.columns, tool, e.props.hint)
+    })
     on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
       await locate($, style)
-      for (const call of e.props.calls) noteCommand(call.tool_use_id, call.tool, call.input)
+      for (const call of e.props.calls) {
+        noteTool(call.tool_use_id, call.tool)
+        noteCommand(call.tool_use_id, call.tool, call.input)
+      }
       if (quiet) for (const call of e.props.calls) if (call.tool_use_id && isReadOnlyCall(call.tool, call.input)) rememberCall(readOnlyCalls, call.tool_use_id)
       if (e.props.isExpanded) {
         for (const call of e.props.calls) if (call.tool_use_id) rememberCall(expandedCalls, call.tool_use_id, 500)
@@ -754,11 +838,8 @@ export const register: Register = (on, options) => {
       return renderToolGroup($.ui.resolve(e), forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), e.props.calls, e.props.isActive, e.viewport?.columns)
     })
     on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-      if (isAsk(e.props.tool)) {
-        askInputs.delete(e.props.tool_use_id)
-        askInputs.set(e.props.tool_use_id, e.props.input)
-        if (askInputs.size > 200) askInputs.delete(askInputs.keys().next().value!)
-      }
+      if (isAsk(e.props.tool)) rememberBounded(askInputs, e.props.tool_use_id, e.props.input, 200)
+      noteTool(e.props.tool_use_id, e.props.tool)
       if (e.props.isInterrupted) rememberCall(interruptedCalls, e.props.tool_use_id)
       await locate($, style)
       noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
@@ -773,7 +854,7 @@ export const register: Register = (on, options) => {
         const toggle = (foldable && rowToggles(style)) || folds ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', look) : null
         const lit = { scope: `row:${instanceKey(e.props.tool_use_id)}`, dimColor: false }
         const row = toggle?.around ? { around: toggle.around, lit } : undefined
-        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}) }, e.viewport?.columns, row)
+        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}), ...(await launchOf($, agentColors, launchRuns, style, e.props)) }, e.viewport?.columns, row)
       }
       const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
       return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns) : next(e)
@@ -800,14 +881,15 @@ export const register: Register = (on, options) => {
       }
       if (resultAside(style, e.props.tool) && !readOnlyCalls.has(e.props.tool_use_id)) {
         const el = $.ui.resolve(e)
-        const ending = callEnding({ ...e.props, isInterrupted: interruptedCalls.has(e.props.tool_use_id) })
+        const call = { ...e.props, isInterrupted: interruptedCalls.has(e.props.tool_use_id) }
+        const ending = callEnding(call)
         const declined = ending === 'declined'
         const folded = foldsResult(style, e.props.tool, ending === 'failed') && !e.props.isExpanded && !expandedCalls.has(e.props.tool_use_id) && !(await read($, unfolded)).includes(`card:${e.props.tool_use_id}`)
         if (folded) return <el.Box />
         const asked = isAsk(e.props.tool) && ending !== 'failed' ? renderAnswers(el, fit(e.viewport), askInputs.get(e.props.tool_use_id), e.props.output, declined, e.viewport?.columns) : undefined
         if (asked) return asked
         const failure = quiet && e.props.isErrored ? renderFailure(el, fit(e.viewport), e.props.output) : undefined
-        return renderResultAside(el, fit(e.viewport), e.viewport?.columns, e.props.tool, failure ?? await next(e))
+        return asideResult(el, fit(e.viewport), e.viewport?.columns, call, failure) ?? next(e)
       }
       if (!quiet) return next(e)
       await locate($, style)
@@ -987,7 +1069,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const kind = e.props.origin.kind
     const own = kind === 'composer' || kind === 'bridge' || (kind === 'unclassified' && !e.props.from && !e.props.task)
-    if (kind === 'task-notification' && style.toolStyle === 'chat' && !e.props.isExpanded) return renderTaskRow($.ui.resolve(e), fit(e.viewport), e.props.text, e.props.task, e.viewport?.columns)
+    const aside = messageAside($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns, await peerColors($, agentColors, style, e.props), callTools)
+    if (aside) return aside
     if (!own) return next(e)
     const at = style.clock === 'off' ? undefined : sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now(), style.clock)

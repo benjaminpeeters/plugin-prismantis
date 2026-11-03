@@ -10,7 +10,7 @@ import { TERMINALS } from './rtl'
 export const TOKENS = [
   'accent', 'heading', 'strong', 'emphasis', 'inlineCode', 'codeText', 'codeCommand', 'codeFlag', 'codeString', 'codeComment',
   'link', 'path', 'number', 'quote', 'rule', 'tableHeader', 'tableRule', 'bullet', 'diagram', 'diagramText', 'diffAdded', 'diffRemoved',
-  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground', 'createdBackground', 'ask',
+  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground', 'createdBackground', 'ask', 'agent',
 ] as const
 
 export type Theme = Partial<Record<(typeof TOKENS)[number], string>>
@@ -76,6 +76,9 @@ export type Style = {
   toolIcon: string
   askIcon: string
   askAlign: 'left' | 'right'
+  agentAlign: 'left' | 'right'
+  agentIcon: string
+  agentTint: 'row' | 'icon' | 'none'
   toolResults: 'folded' | 'shown'
   renderLog: boolean
   turnWord: string
@@ -98,7 +101,7 @@ export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte
 
 export const FORK_OPTIONS = [
   'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
-  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'runIcon', 'toolResults', 'promptFold', 'replyFold', 'replyFoldTail', 'renderLog', 'turnWord', 'replyCopy',
+  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'agentAlign', 'agentIcon', 'agentTint', 'runIcon', 'toolResults', 'promptFold', 'replyFold', 'replyFoldTail', 'renderLog', 'turnWord', 'replyCopy',
 ] as const
 
 export type ForkOption = (typeof FORK_OPTIONS)[number]
@@ -231,6 +234,9 @@ export const resolveStyle = (options: PluginOptions): Style => {
     toolIcon: glyph(options, 'toolIcon'),
     askIcon: glyph(options, 'askIcon'),
     askAlign: choice(options, 'askAlign', ['left', 'right'] as const),
+    agentAlign: choice(options, 'agentAlign', ['left', 'right'] as const),
+    agentIcon: glyph(options, 'agentIcon'),
+    agentTint: choice(options, 'agentTint', ['row', 'icon', 'none'] as const),
     toolResults: choice(options, 'toolResults', ['folded', 'shown'] as const),
     renderLog: flag(options, 'renderLog'),
     turnWord: text(options, 'turnWord'),

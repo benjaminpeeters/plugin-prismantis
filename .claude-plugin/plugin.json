@@ -299,6 +299,12 @@
       "description": "Color for an AskUserQuestion row's glyph (unless the call failed), its name (with askAlign left) and the headers of its questions (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color; the picked answers keep the number color.",
       "default": ""
     },
+    "agentColor": {
+      "type": "string",
+      "title": "Subagent color",
+      "description": "Color for the subagent rows (Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice), on the parts agentTint names; a failed or stopped one keeps its failure color on the glyph (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
+      "default": "blue"
+    },
     "heading1Color": {
       "type": "string",
       "title": "H1",
@@ -531,10 +537,30 @@
       "default": "left",
       "options": ["left", "right"]
     },
+    "agentAlign": {
+      "type": "string",
+      "title": "Subagent side",
+      "description": "With toolStyle chat, where the subagent rows sit (fork): Agent, Task and SendMessage calls and a quiet failure under them, a message from another agent or session (› Message from …), and a subagent's finished notice. left: with Claude's replies, the row's glyph in the reply gutter, a call's name and a message's sender in bold. right: with the other tool rows. agentTint sets what is colored either way.",
+      "default": "right",
+      "options": ["left", "right"]
+    },
+    "agentIcon": {
+      "type": "string",
+      "title": "Subagent icon",
+      "description": "The glyph of the subagent rows (Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice), in place of toolIcon, drawn in agentColor unless agentTint is none or the call or the subagent failed or was stopped (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "»"
+    },
+    "agentTint": {
+      "type": "string",
+      "title": "Subagent coloring",
+      "description": "How much of a subagent row draws in agentColor (fork): Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice. row: the glyph and the whole text, not dimmed. icon: the glyph alone, the text drawn like the other rows on its side (dimmed on the right). none: neither, the glyph in the usual tool row colors. A failed or stopped call or subagent keeps its failure color on the glyph.",
+      "default": "row",
+      "options": ["row", "icon", "none"]
+    },
     "toolResults": {
       "type": "string",
       "title": "Tool results",
-      "description": "With toolStyle chat, the result lines Claude Code draws under a tool row (a loaded skill, a backgrounded agent, the answers to a question), not shell output or edit diffs (fork). folded: hidden until the row is clicked or the transcript is expanded (ctrl+o), then drawn as a block on the right under the row. shown: always drawn there. A question's answers follow askAlign instead, so with askAlign left they sit under their row on the left. A failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest; an interrupted call's result drawn before its row shows, as its interruption is not known yet.",
+      "description": "With toolStyle chat, the result lines Claude Code draws under a tool row (a loaded skill, the answers to a question), not shell output or edit diffs (fork). folded: hidden until the row is clicked or the transcript is expanded (ctrl+o). shown: always drawn. A background launch's type and description are part of its row, not a result, so they never fold. The lines prismantis draws itself (a question's answers, a quiet failure) sit under the row on its side, following askAlign and agentAlign; the rest stay where Claude Code draws them, as it refuses a sized box above its own drawing. A failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest; an interrupted call's result drawn before its row shows, as its interruption is not known yet.",
       "default": "shown",
       "options": ["folded", "shown"]
     },

@@ -1,4 +1,4 @@
-import type { ElementTable, RenderElement, RenderNode, TextHoverProps } from 'claude-code'
+import type { ElementTable, PromptOrigin, RenderElement, RenderNode, TextHoverProps } from 'claude-code'
 
 import { isDraftLang } from './draft'
 import { isHandoffCard, isHandoffLang } from './handoff'
@@ -1410,7 +1410,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   return out
 }
 
-export type ToolRow = { tool: string; input: unknown; output?: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats }
+export type ToolRow = { tool: string; input: unknown; output?: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats; launch?: LaunchHint }
+
+export type LaunchHint = { continues: boolean; badgeColor?: string }
 
 export type FileStats = { added: number; removed: number }
 
@@ -1424,7 +1426,7 @@ export const fileStats = (output: unknown): FileStats | undefined => {
 
 const VERBS: Record<string, string> = {
   Bash: 'Ran', PowerShell: 'Ran', Read: 'Read', Write: 'Wrote', Edit: 'Edited', MultiEdit: 'Edited', NotebookEdit: 'Edited',
-  Grep: 'Searched', Glob: 'Listed', WebFetch: 'Fetched', WebSearch: 'Searched the web for', Agent: 'Delegated', Task: 'Delegated',
+  Grep: 'Searched', Glob: 'Listed', WebFetch: 'Fetched', WebSearch: 'Searched the web for', Agent: 'Delegated', Task: 'Delegated', SendMessage: 'Messaged',
 }
 
 export const record = (value: unknown): Record<string, unknown> => (value !== null && typeof value === 'object' ? value as Record<string, unknown> : {})
@@ -1446,10 +1448,42 @@ export const isAsk = (tool: string | undefined): boolean => tool === ASK_TOOL
 
 const askColor = (t: Theme): string | undefined => t.ask ?? t.accent
 
+const DELEGATE_TOOLS = ['Agent', 'Task']
+
+const AGENT_TOOLS = [...DELEGATE_TOOLS, 'SendMessage']
+
+type RowKind = 'ask' | 'agent' | 'tool'
+
+const messageTarget = (input: unknown): string | undefined => field(input, 'summary', 'to')
+
+const pieceTarget = (call: ToolRow): string | undefined =>
+  call.tool === 'SendMessage' ? messageTarget(call.input) : field(call.input, 'skill', ...TARGET_FIELDS)
+
+const targetColor = (t: Theme, ask: boolean, tint: string | undefined, isPath: boolean): string | undefined =>
+  ask ? undefined : tint ?? (isPath ? t.path : t.inlineCode)
+
+const isAgent = (tool: string | undefined): boolean => tool !== undefined && AGENT_TOOLS.includes(tool)
+
+const isDelegate = (tool: string | undefined): boolean => tool !== undefined && DELEGATE_TOOLS.includes(tool)
+
+const rowKind = (tool: string | undefined): RowKind => (isAsk(tool) ? 'ask' : isAgent(tool) ? 'agent' : 'tool')
+
+const agentColor = (t: Theme): string | undefined => t.agent ?? t.accent
+
+const agentTone = (style: Style, kind: RowKind, part: 'icon' | 'text'): string | undefined =>
+  kind !== 'agent' || style.agentTint === 'none' || (part === 'text' && style.agentTint !== 'row') ? undefined : agentColor(style.theme)
+
+const leadColor = (style: Style, kind: RowKind): string | undefined =>
+  kind === 'ask' ? askColor(style.theme) : kind === 'agent' ? agentTone(style, kind, 'text') : undefined
+
 const isDecline = (output: unknown): boolean => typeof output === 'string' && /user rejected tool use|doesn't want to proceed/i.test(output)
 
-const statusColor = (t: Theme, row: ToolRow) =>
-  isAsk(row.tool) && callEnding(row) !== 'failed' ? askColor(t) : row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number
+const statusColor = (style: Style, row: ToolRow) => {
+  const t = style.theme
+  if (isAsk(row.tool) && callEnding(row) !== 'failed') return askColor(t)
+  const tone = callEnding(row) === undefined ? agentTone(style, rowKind(row.tool), 'icon') : undefined
+  return tone ?? (row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number)
+}
 
 const toolDim = (style: Style) => style.toolStyle !== "classic"
 
@@ -1468,7 +1502,13 @@ const chatWidth = (style: Style, columns: number | undefined): number | '100%' =
 
 const chatColumn = (style: Style, columns: number | undefined): number => Math.max(20, Math.floor(chatSpan(style, columns) * 0.6))
 
-const asksLeft = (style: Style, tool: string | undefined): boolean => style.toolStyle === 'chat' && isAsk(tool) && style.askAlign === 'left'
+const sitsLeft = (style: Style, kind: RowKind): boolean =>
+  style.toolStyle === 'chat' && ((kind === 'ask' && style.askAlign === 'left') || (kind === 'agent' && style.agentAlign === 'left'))
+
+const rowTone = (style: Style, kind: RowKind): { tint: string | undefined; dim: boolean } => {
+  const tint = agentTone(style, kind, 'text')
+  return { tint, dim: toolDim(style) && !sitsLeft(style, kind) && tint === undefined }
+}
 
 export const columnsOf = (viewport?: { columns?: number | undefined }): number => Math.max(20, (viewport?.columns ?? 100) - 4)
 
@@ -1479,12 +1519,12 @@ const stepRule = ({ Box, Text }: ElementTable, columns: number): RenderElement =
 export const withStepRule = (el: ElementTable, isStepped: boolean, columns: number, row: RenderElement): RenderElement =>
   isStepped ? <el.Box flexDirection="column">{stepRule(el, columns)}{row}</el.Box> : row
 
-const rowIcon = (style: Style, tool: string | undefined): string => (isAsk(tool) ? style.askIcon : style.toolIcon)
+const rowIcon = (style: Style, kind: RowKind): string => (kind === 'ask' ? style.askIcon : kind === 'agent' ? style.agentIcon : style.toolIcon)
 
-const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | undefined, label: string, color: string | undefined, running: boolean, tool: string | undefined, text: RenderElement) => {
+const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | undefined, label: string, color: string | undefined, running: boolean, kind: RowKind, text: RenderElement) => {
   const { Box, Text } = el
-  const icon = rowIcon(style, tool)
-  if (asksLeft(style, tool)) {
+  const icon = rowIcon(style, kind)
+  if (sitsLeft(style, kind)) {
     const row = <Box key="row" flexDirection="row">{toolGutter(el, style, color, running, icon)}<Box flexShrink={1}>{text}</Box></Box>
     return withStepRule(el, style.stepMark, columnsOf({ columns: viewportColumns }), row)
   }
@@ -1500,14 +1540,44 @@ const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | un
 
 const OWN_RESULTS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']
 
+export const renderHintAside = (el: ElementTable, style: Style, columns: number | undefined, tool: string, hint: string): RenderElement =>
+  renderResultAside(el, style, columns, rowKind(tool), <el.Text dimColor>{hint}</el.Text>)
+
+export const hintAside = (style: Style, progress: { kind: string; hint?: string }, tool: string): boolean =>
+  style.toolStyle === 'chat' && progress.kind === 'background_hint' && !!progress.hint && !sitsLeft(style, rowKind(tool))
+
+const PEER_KINDS: readonly PromptOrigin['kind'][] = ['peer', 'peer-send-message']
+
+type AsideTask = { status?: string; type?: string; durationMs?: number; toolUseId?: string }
+
+export type AsideMessage = { text: string; origin: Pick<PromptOrigin, 'kind'>; from?: { name: string }; task?: AsideTask; isExpanded: boolean }
+
+const drawsAside = (style: Style, message: AsideMessage): boolean => style.toolStyle === 'chat' && !message.isExpanded
+
+export const peerSender = (style: Style, message: AsideMessage): string | undefined =>
+  drawsAside(style, message) && PEER_KINDS.includes(message.origin.kind) ? message.from?.name : undefined
+
+export const messageAside = (el: ElementTable, style: Style, message: AsideMessage, columns: number | undefined, senders: SenderColors, tools: ReadonlyMap<string, string>): RenderElement | undefined => {
+  if (message.origin.kind === 'task-notification') return drawsAside(style, message) ? renderTaskRow(el, style, message.text, message.task, columns, tools) : undefined
+  const sender = peerSender(style, message)
+  return sender === undefined ? undefined : renderPeerRow(el, style, sender, message.text, columns, senders.get(sender))
+}
+
 export const resultAside = (style: Style, tool: string): boolean => style.toolStyle === 'chat' && !OWN_RESULTS.includes(tool)
 
-export const renderResultAside = (el: ElementTable, style: Style, columns: number | undefined, tool: string, body: RenderElement, w?: number): RenderElement =>
-  asksLeft(style, tool) ? <el.Box flexDirection="column" paddingLeft={2}>{body}</el.Box> : (
+const renderResultAside = (el: ElementTable, style: Style, columns: number | undefined, kind: RowKind, body: RenderElement, w?: number): RenderElement =>
+  sitsLeft(style, kind) ? <el.Box flexDirection="column" paddingLeft={2}>{body}</el.Box> : (
     <el.Box flexDirection="row" justifyContent="flex-end" width={chatWidth(style, columns)}>
       <el.Box flexDirection="column" flexShrink={1} {...(w === undefined ? {} : { width: w })}>{body}</el.Box>
     </el.Box>
   )
+
+type ResultCall = Pick<ToolRow, 'tool' | 'output' | 'isErrored' | 'isInterrupted'> & { isExpanded?: boolean }
+
+export const asideResult = (el: ElementTable, style: Style, columns: number | undefined, call: ResultCall, failure: RenderElement | undefined): RenderElement | undefined => {
+  if (failure) return renderResultAside(el, style, columns, rowKind(call.tool), failure)
+  return !call.isExpanded && style.toolStyle === 'chat' && launchedInBackground({ ...call, isRunning: false }) ? <el.Box /> : undefined
+}
 
 export type CallEnding = 'declined' | 'interrupted' | 'failed' | undefined
 
@@ -1658,7 +1728,7 @@ export const renderAnswers = (el: ElementTable, style: Style, input: unknown, ou
       {asked.response ? <el.Text key="response" color={t.number}>{`✓ ${asked.response}`}</el.Text> : null}
     </el.Box>
   )
-  return renderResultAside(el, style, columns, ASK_TOOL, body, w)
+  return renderResultAside(el, style, columns, 'ask', body, w)
 }
 
 type Places = Pick<Style, 'cwd' | 'home'>
@@ -2487,6 +2557,13 @@ export const refusalReason = (output: unknown): string | undefined => {
   return output.replace(/\s+/g, ' ').trim()
 }
 
+export const rememberBounded = <V,>(map: Map<string, V>, id: string | undefined, value: V, limit = 500): void => {
+  if (!id) return
+  map.delete(id)
+  map.set(id, value)
+  if (map.size > limit) map.delete(map.keys().next().value!)
+}
+
 export const rememberCall = (calls: Set<string>, id: string, limit = 2000): void => {
   calls.delete(id)
   calls.add(id)
@@ -2535,7 +2612,7 @@ const callPieces = (call: ToolRow, style: Style): LinkPiece[] => {
     if (pattern !== undefined) return path === undefined ? [{ text: `Searched . for "${pattern}"` }] : [{ text: 'Searched ' }, { text: shortTarget(style, path), path }, { text: ` for "${pattern}"` }]
   }
   const verb = call.tool === 'Skill' ? 'Loaded skill' : VERBS[call.tool] ?? call.tool.replace(/^mcp__([^_]+)__/, '$1 ')
-  const target = field(call.input, 'skill', ...TARGET_FIELDS)
+  const target = pieceTarget(call)
   const args = call.tool === 'Skill' ? field(call.input, 'args') : undefined
   if (target === undefined) return [{ text: verb }]
   const path = toolPath(call.tool, PATH_FIELDS.some(k => field(call.input, k) === target) ? target : undefined)
@@ -2546,19 +2623,21 @@ export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) =
 
 const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number | undefined, toggle?: RowToggle): RenderElement => {
   const t = style.theme
-  const dot = statusColor(t, row)
+  const dot = statusColor(style, row)
   const pieces = callPieces(row, style).map(p => (toggle ? { text: p.text } : p))
   const ending = callEnding(row)
-  const left = asksLeft(style, row.tool)
+  const kind = rowKind(row.tool)
+  const left = sitsLeft(style, kind)
+  const { tint, dim } = rowTone(style, kind)
   const label = `${pieceText(pieces)}${ending ? ` ${ending}` : ''}`
   const text = (
-    <el.Text wrap="truncate-end" dimColor={toolDim(style) && !left}>
-      {left ? <el.Text bold color={askColor(t)}>{pieces[0]?.text}</el.Text> : null}
+    <el.Text wrap="truncate-end" color={tint} dimColor={dim}>
+      {left ? <el.Text bold color={leadColor(style, kind)}>{pieces[0]?.text}</el.Text> : null}
       {drawPieces(el, style, left ? pieces.slice(1) : pieces)}
       {ending === 'failed' ? <el.Text color={t.codeFlag}> failed</el.Text> : ending ? <el.Text dimColor>{` ${ending}`}</el.Text> : null}
     </el.Text>
   )
-  return toolLayout(el, style, columns, label, dot, row.isRunning, row.tool, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
+  return toolLayout(el, style, columns, label, dot, row.isRunning, kind, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
 }
 
 const rowTarget = (style: Style, row: ToolRow, isShell: boolean): { target?: string; path?: string } => {
@@ -2567,10 +2646,103 @@ const rowTarget = (style: Style, row: ToolRow, isShell: boolean): { target?: str
     return target ? { target } : {}
   }
   if (isShell) return { target: field(row.input, 'command')?.split('\n')[0] }
+  if (row.tool === 'SendMessage') {
+    const target = messageTarget(row.input)
+    return target ? { target } : {}
+  }
   return targetOf(style, row.input, TARGET_FIELDS)
 }
 
+const LAUNCHES = ['async_launched', 'remote_launched']
+
+type LaunchCheck = Pick<ToolRow, 'tool' | 'output' | 'isRunning' | 'isErrored' | 'isInterrupted'>
+
+export const launchedInBackground = (row: LaunchCheck): boolean =>
+  isDelegate(row.tool) && !row.isRunning && !row.isErrored && !row.isInterrupted && LAUNCHES.includes(String(record(row.output).status))
+
+type RunCall = { tool_use_id: string; tool: string; input: unknown; result?: unknown; isError?: true }
+
+type RunMessage = { role: string; text: string; toolUses: readonly RunCall[] }
+
+const launchCall = (call: RunCall | undefined): boolean =>
+  call !== undefined && launchedInBackground({ tool: call.tool, output: call.result, isRunning: false, isErrored: call.isError === true, isInterrupted: false })
+
+export const continuesLaunch = (messages: readonly RunMessage[], id: string): boolean | undefined => {
+  const at = messages.findIndex(m => m.role === 'assistant' && m.toolUses.some(t => t.tool_use_id === id))
+  if (at < 0) return undefined
+  const own = messages[at]!
+  const k = own.toolUses.findIndex(t => t.tool_use_id === id)
+  if (k > 0) return launchCall(own.toolUses[k - 1])
+  if (own.text.trim() !== '') return false
+  const before = messages.slice(0, at).findLast(m => !(m.role === 'user' && m.text.trim() === ''))
+  return before?.role === 'assistant' && launchCall(before.toolUses.at(-1))
+}
+
+const AGENT_COLORS: Record<string, string> = {
+  red: '#dc2626', blue: '#6a9bcc', green: '#16a34a', yellow: '#ca8a04', purple: '#827dbd', orange: '#d97757', pink: '#c46686', cyan: '#0891b2',
+}
+
+const BADGE_TEXT = '#000000'
+
+export type AgentColors = ReadonlyMap<string, string>
+
+export type SenderColors = ReadonlyMap<string, string>
+
+export const agentDefinition = (text: string, file: string): { name: string; color?: string } => {
+  const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
+  const value = (key: string) => new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+?)["']?\\s*$`, 'm').exec(head)?.[1]
+  const color = AGENT_COLORS[value('color')?.toLowerCase() ?? '']
+  return { name: value('name') ?? file.replace(/\.md$/, ''), ...(color ? { color } : {}) }
+}
+
+export const subagentType = (input: unknown): string | undefined => field(input, 'subagent_type')
+
+const agentBadge = ({ Text }: ElementTable, name: string, color: string | undefined, rest?: { color?: string; dimColor?: boolean; bold?: boolean }): RenderElement =>
+  color === undefined ? <Text {...rest}>{name}</Text> : <Text bold={rest?.bold} backgroundColor={color} color={BADGE_TEXT}>{name}</Text>
+
+const LAUNCH_HEAD = 'background agents launched'
+
+const LAUNCH_KEYS = '(↓ to manage)'
+
+type LaunchSide = { lead: string; tail: string }
+
+const LAUNCH_LEFT: LaunchSide = { lead: '└ ', tail: '' }
+
+const LAUNCH_RIGHT: LaunchSide = { lead: '', tail: '  ' }
+
+const launchBranch = (el: ElementTable, type: string | undefined, description: string | undefined, badgeColor: string | undefined, dim: boolean, side: LaunchSide): RenderElement | undefined => {
+  if (type === undefined && description === undefined) return undefined
+  const said = description === undefined ? '' : type === undefined ? description : ` (${description})`
+  return (
+    <el.Text wrap="truncate-end" dimColor={dim}>
+      {side.lead}
+      {type === undefined ? null : agentBadge(el, type, badgeColor, { dimColor: dim })}
+      {said}{side.tail}
+    </el.Text>
+  )
+}
+
+const renderLaunchRow = (el: ElementTable, style: Style, row: ToolRow, launch: LaunchHint, columns: number | undefined): RenderElement => {
+  const { Box, Text } = el
+  const { tint, dim } = rowTone(style, 'agent')
+  const type = subagentType(row.input)
+  const description = field(row.input, 'description')
+  const below = launchBranch(el, type, description, launch.badgeColor, dim, sitsLeft(style, 'agent') ? LAUNCH_LEFT : LAUNCH_RIGHT)
+  const branch = below === undefined ? undefined : renderResultAside(el, style, columns, 'agent', below)
+  if (launch.continues && branch) return branch
+  const label = `${LAUNCH_HEAD} ${LAUNCH_KEYS}`
+  const head = (
+    <Text wrap="truncate-end" color={tint} dimColor={dim}>
+      {`${LAUNCH_HEAD} `}
+      <Text dimColor>{LAUNCH_KEYS}</Text>
+    </Text>
+  )
+  const top = toolLayout(el, style, columns, label, statusColor(style, row), row.isRunning, 'agent', head)
+  return branch === undefined ? top : <Box flexDirection="column">{top}{branch}</Box>
+}
+
 export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns?: number, toggle?: RowToggle): RenderElement => {
+  if (row.launch !== undefined) return renderLaunchRow(el, style, row, row.launch, columns)
   if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns, toggle)
   const { Text } = el
   const t = style.theme
@@ -2579,26 +2751,27 @@ export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, colu
   const verb = ask ? row.tool : VERBS[row.tool] ?? row.tool.replace(/^mcp__([^_]+)__/, '$1 ')
   const found = rowTarget(style, row, isShell)
   const target = found.target
-  const dot = statusColor(t, row)
+  const dot = statusColor(style, row)
   const isPath = !ask && target !== undefined && (found.path !== undefined || /^(~|\.{0,2}\/|[A-Za-z]:\\)/.test(target))
   const stats = style.editRow === 'file' && isPath && row.stats ? row.stats : undefined
   const counts = stats ? ` +${stats.added} −${stats.removed}` : ''
   const ending = callEnding(row)
-  const left = asksLeft(style, row.tool)
-  const dim = toolDim(style) && !left
+  const kind = rowKind(row.tool)
+  const left = sitsLeft(style, kind)
+  const { tint, dim } = rowTone(style, kind)
   const gap = ask ? ' · ' : ' '
 
   const label = `${verb}${target === undefined ? "" : `${gap}${target}`}${counts}${ending ? ` ${ending}` : ""}`
   const hoverProps = toggle ? { hover: toggle.lit } : {}
   const text = (
-      <Text wrap="truncate-end" dimColor={dim} {...hoverProps}>
-        <Text bold={!dim} color={left ? askColor(t) : undefined} dimColor={dim} {...hoverProps}>{verb}</Text>
+      <Text wrap="truncate-end" color={tint} dimColor={dim} {...hoverProps}>
+        <Text bold={!dim} color={left ? leadColor(style, kind) : tint} dimColor={dim} {...hoverProps}>{verb}</Text>
         {target === undefined ? null : <Text {...hoverProps}>{gap}</Text>}
-        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={ask ? undefined : isPath ? t.path : t.inlineCode} dimColor={dim} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toggle ? undefined : toolPath(row.tool, found.path) }])}</Text>}
+        {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : stats ? fileTarget(el, style, target, stats, toggle?.lit) : <Text color={targetColor(t, ask, tint, isPath)} dimColor={dim} {...hoverProps}>{drawPieces(el, style, [{ text: target, path: toggle ? undefined : toolPath(row.tool, found.path) }])}</Text>}
         {ending === 'failed' ? <Text color={t.codeFlag} {...hoverProps}> failed</Text> : ending ? <Text dimColor {...hoverProps}>{` ${ending}`}</Text> : null}
       </Text>
   )
-  return toolLayout(el, style, columns, label, dot, row.isRunning, row.tool, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
+  return toolLayout(el, style, columns, label, dot, row.isRunning, kind, toggle ? toggle.around(text, { inverse: false, ...toggle.lit }) : text)
 }
 
 // editRow: file: the folder dim, the file name in the path color, then the diff's +N −M.
@@ -2912,7 +3085,7 @@ const commandLine = (el: ElementTable, style: Style, row: ToolRow, line: string,
   ]
   return cells.map(({ text, cell }, k) => (
     <Box key={`c${i}.${k}`} flexDirection="row">
-      <Box width={COMMAND_LEAD} flexShrink={0}>{i === 0 && k === 0 ? <Text color={statusColor(style.theme, row)}>{row.isRunning ? '◌' : style.toolIcon}</Text> : <Text>{heldLabel(style, '  ', text)}</Text>}</Box>
+      <Box width={COMMAND_LEAD} flexShrink={0}>{i === 0 && k === 0 ? <Text color={statusColor(style, row)}>{row.isRunning ? '◌' : style.toolIcon}</Text> : <Text>{heldLabel(style, '  ', text)}</Text>}</Box>
       <Text>{cell}</Text>
     </Box>
   ))
@@ -2975,7 +3148,7 @@ const quietToolGroup = (el: ElementTable, style: Style, calls: readonly (ToolRow
   const reasons = failed.map((c, i) => renderFailure(el, style, c.output, `r${i}`)).filter((r): r is RenderElement => r !== undefined)
   const isShell = (c: ToolRow) => c.tool === 'Bash' || c.tool === 'PowerShell'
   const results = calls.flatMap((c, i) => (c.isErrored || c.output === undefined || !isShell(c) || isReadOnlyCall(c.tool, c.input) ? [] : [<el.Box key={`o${i}`}>{renderShellResult(el, style, c.output)}</el.Box>]))
-  const row = toolLayout(el, style, columns, label, dot, running, undefined, (
+  const row = toolLayout(el, style, columns, label, dot, running, 'tool', (
     <el.Text wrap="truncate-end" dimColor={toolDim(style)}>{drawPieces(el, style, labels.flatMap((l, i) => (i ? [{ text: ' · ' }, ...l] : l)))}</el.Text>
   ))
   if (!reasons.length && !results.length) return row
@@ -3000,7 +3173,7 @@ export const renderToolGroup = (el: ElementTable, style: Style, calls: readonly 
   const lastTarget = lastFound.target?.split('\n')[0]
   const summary = groupSummary(calls)
   const label = `${summary}${failed ? ` · ${failed} failed` : ""}${lastTarget ? ` · last: ${lastTarget}` : ""}`
-  return toolLayout(el, style, columns, label, dot, running, undefined, (
+  return toolLayout(el, style, columns, label, dot, running, 'tool', (
       <Text wrap="truncate-end" dimColor={toolDim(style)}>
         <Text bold={!toolDim(style)} dimColor={toolDim(style)}>{summary}</Text>
         {failed ? <Text color={t.codeFlag}>{` · ${failed} failed`}</Text> : null}
@@ -3016,12 +3189,36 @@ export const formatDuration = (ms: number): string => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
 }
 
-export const renderTaskRow = (el: ElementTable, style: Style, text: string, task: { status?: string; durationMs?: number } | undefined, columns: number | undefined): RenderElement => {
+const isAgentTask = (text: string, task: AsideTask | undefined, tools: ReadonlyMap<string, string>): boolean => {
+  const tool = task?.toolUseId === undefined ? undefined : tools.get(task.toolUseId)
+  return tool !== undefined ? isDelegate(tool) : task?.type === undefined && /^Agent "/.test(text)
+}
+
+const renderTaskRow = (el: ElementTable, style: Style, text: string, task: AsideTask | undefined, columns: number | undefined, tools: ReadonlyMap<string, string>): RenderElement => {
   const t = style.theme
-  const color = task?.status === 'failed' ? t.codeFlag : task?.status === 'killed' ? t.codeComment : t.number
+  const kind: RowKind = isAgentTask(text, task, tools) ? 'agent' : 'tool'
+  const color = task?.status === 'failed' ? t.codeFlag : task?.status === 'killed' ? t.codeComment : agentTone(style, kind, 'icon') ?? t.number
+  const { tint, dim } = rowTone(style, kind)
   const summary = text.split('\n')[0] ?? ''
   const label = task?.durationMs === undefined ? summary : `${summary} · ${formatDuration(task.durationMs)}`
-  return toolLayout(el, style, columns, label, color, false, undefined, <el.Text wrap="truncate-end" dimColor={toolDim(style)}>{label}</el.Text>)
+  return toolLayout(el, style, columns, label, color, false, kind, <el.Text wrap="truncate-end" color={tint} dimColor={dim}>{label}</el.Text>)
+}
+
+const renderPeerRow = (el: ElementTable, style: Style, name: string, text: string, columns: number | undefined, badgeColor: string | undefined): RenderElement => {
+  const color = agentTone(style, 'agent', 'icon') ?? style.theme.number
+  const { tint, dim } = rowTone(style, 'agent')
+  const left = sitsLeft(style, 'agent')
+  const line = text.split('\n').find(l => l.trim() !== '')?.trim()
+  const label = `Message from ${name}${line === undefined ? '' : ` · ${line}`}`
+  const lead = { bold: left || tint !== undefined, color: tint }
+  const body = (
+    <el.Text wrap="truncate-end" color={tint} dimColor={dim}>
+      <el.Text {...lead}>Message from </el.Text>
+      {agentBadge(el, name, badgeColor, lead)}
+      {line === undefined ? null : ` · ${line}`}
+    </el.Text>
+  )
+  return toolLayout(el, style, columns, label, color, false, 'agent', body)
 }
 
 export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: string, durationMs: number, time?: string): RenderElement => {
