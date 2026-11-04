@@ -10,12 +10,20 @@ import { TERMINALS } from './rtl'
 export const TOKENS = [
   'accent', 'heading', 'strong', 'emphasis', 'inlineCode', 'codeText', 'codeCommand', 'codeFlag', 'codeString', 'codeComment',
   'link', 'path', 'number', 'quote', 'rule', 'tableHeader', 'tableRule', 'bullet', 'diagram', 'diagramText', 'diffAdded', 'diffRemoved',
-  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground', 'createdBackground', 'ask', 'agent',
+  'turnDuration', 'replyBullet', 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'diffBackground', 'createdBackground', 'ask', 'agent', 'session',
 ] as const
 
 export type Theme = Partial<Record<(typeof TOKENS)[number], string>>
 
 export type Clock = 'off' | '24h' | '12h'
+
+const SIDES = ['left', 'right'] as const
+
+const TINTS = ['row', 'icon', 'none'] as const
+
+export type Side = typeof SIDES[number]
+
+export type Tint = typeof TINTS[number]
 
 export type Style = {
   theme: Theme
@@ -75,10 +83,17 @@ export type Style = {
   thinkingIcon: string
   toolIcon: string
   askIcon: string
-  askAlign: 'left' | 'right'
-  agentAlign: 'left' | 'right'
+  askAlign: Side
+  agentAlign: Side
   agentIcon: string
-  agentTint: 'row' | 'icon' | 'none'
+  agentTint: Tint
+  agentReplyIcon: string
+  sessionAlign: Side
+  sessionIcon: string
+  sessionReplyIcon: string
+  sessionTint: Tint
+  talkPreview: boolean
+  talkMessageColor: 'row' | 'plain'
   toolResults: 'folded' | 'shown'
   renderLog: boolean
   turnWord: string
@@ -101,7 +116,7 @@ export const RANDOM_THEMES: readonly string[] = PRESET_NAMES.filter(t => !/latte
 
 export const FORK_OPTIONS = [
   'diffWidth', 'diffFold', 'diffTint', 'diffWordTint', 'proseCap', 'toolWidth', 'diffToggle', 'stepMark', 'editErrors', 'editRow', 'createdStyle',
-  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'agentAlign', 'agentIcon', 'agentTint', 'runIcon', 'toolResults', 'promptFold', 'replyFold', 'replyFoldTail', 'renderLog', 'turnWord', 'replyCopy',
+  'diffBorder', 'diffPath', 'handoff', 'drafts', 'copyIcon', 'replyIcon', 'thinkingIcon', 'toolIcon', 'askIcon', 'askAlign', 'agentAlign', 'agentIcon', 'agentTint', 'agentReplyIcon', 'sessionAlign', 'sessionIcon', 'sessionReplyIcon', 'sessionTint', 'talkPreview', 'talkMessageColor', 'runIcon', 'toolResults', 'promptFold', 'replyFold', 'replyFoldTail', 'renderLog', 'turnWord', 'replyCopy',
 ] as const
 
 export type ForkOption = (typeof FORK_OPTIONS)[number]
@@ -233,10 +248,17 @@ export const resolveStyle = (options: PluginOptions): Style => {
     thinkingIcon: glyph(options, 'thinkingIcon'),
     toolIcon: glyph(options, 'toolIcon'),
     askIcon: glyph(options, 'askIcon'),
-    askAlign: choice(options, 'askAlign', ['left', 'right'] as const),
-    agentAlign: choice(options, 'agentAlign', ['left', 'right'] as const),
+    askAlign: choice(options, 'askAlign', SIDES),
+    agentAlign: choice(options, 'agentAlign', SIDES),
     agentIcon: glyph(options, 'agentIcon'),
-    agentTint: choice(options, 'agentTint', ['row', 'icon', 'none'] as const),
+    agentTint: choice(options, 'agentTint', TINTS),
+    agentReplyIcon: glyph(options, 'agentReplyIcon'),
+    sessionAlign: choice(options, 'sessionAlign', SIDES),
+    sessionIcon: glyph(options, 'sessionIcon'),
+    sessionReplyIcon: glyph(options, 'sessionReplyIcon'),
+    sessionTint: choice(options, 'sessionTint', TINTS),
+    talkPreview: flag(options, 'talkPreview'),
+    talkMessageColor: choice(options, 'talkMessageColor', ['row', 'plain'] as const),
     toolResults: choice(options, 'toolResults', ['folded', 'shown'] as const),
     renderLog: flag(options, 'renderLog'),
     turnWord: text(options, 'turnWord'),

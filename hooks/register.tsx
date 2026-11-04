@@ -19,8 +19,8 @@ import { closeWindow, isStep, openWindow, stepTexts, toolInWindow } from './turn
 import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawFold, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
-import type { AgentColors, AsideMessage, LaunchHint, SenderColors, ToolRow } from './render'
-import { MARK, agentDefinition, callEnding, continuesLaunch, launchedInBackground, columnsOf, hintAside, isAsk, messageAside, peerSender, record, subagentType, rememberBounded, withStepRule, renderAnswers, renderHintAside, asideResult, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import type { AgentColors, AsideMessage, RowHint, RowToggle, TalkHint, TalkKind, ToolRow } from './render'
+import { MARK, MESSAGE_LOOK, agentDefinition, delegatedType, sentMessage, unknownAgent, callEnding, continuesLaunch, launchedInBackground, columnsOf, hintAside, isAsk, messageAside, peerSender, record, rememberBounded, withStepRule, renderAnswers, renderHintAside, asideResult, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -756,24 +756,99 @@ const continuesRun = async ($: EngineInterface, runs: Map<string, boolean>, id: 
   return runs.get(id) === true
 }
 
-const launchOf = async ($: EngineInterface, cache: AgentColorCache, runs: Map<string, boolean>, style: Style, call: LaunchCall): Promise<{ launch?: LaunchHint }> => {
-  if (style.toolStyle !== 'chat' || !launchedInBackground(call)) return {}
-  const type = subagentType(call.input)
-  const badgeColor = type === undefined ? undefined : (await colorsOf($, cache)).get(type)
-  return { launch: { continues: await continuesRun($, runs, call.tool_use_id), ...(badgeColor ? { badgeColor } : {}) } }
+type TalkState = { hints: Map<string, TalkHint>; sends: Map<string, TalkKind>; agents: Map<string, string>; scan?: Promise<void> }
+
+const noteAgent = (talk: TalkState, type: string, ...keys: unknown[]): void => {
+  for (const key of [type, ...keys]) if (typeof key === 'string' && key !== '') rememberBounded(talk.agents, key, type)
 }
 
-const peerColors = async ($: EngineInterface, cache: AgentColorCache, style: Style, message: AsideMessage): Promise<SenderColors> => {
-  if (peerSender(style, message) === undefined) return new Map()
-  const colors = await colorsOf($, cache)
-  const senders = new Map<string, string>()
-  for (const agent of await $.agent.list()) {
-    const color = colors.get(agent.type)
-    if (!color) continue
-    senders.set(agent.type, color)
-    if (agent.name) senders.set(agent.name, color)
+const knownType = (talk: TalkState, keys: unknown[]): string | undefined => {
+  for (const key of keys) if (typeof key === 'string' && talk.agents.has(key)) return talk.agents.get(key)
+  return undefined
+}
+
+const scanAgentCalls = async ($: EngineInterface, talk: TalkState): Promise<void> => {
+  for (const message of await $.session.messages()) {
+    for (const call of message.toolUses) {
+      const type = delegatedType(call)
+      if (type !== undefined) noteAgent(talk, type, call.agentId)
+    }
   }
-  return senders
+}
+
+const scanOnce = ($: EngineInterface, talk: TalkState): Promise<void> => {
+  talk.scan ??= scanAgentCalls($, talk).catch((err: unknown) => {
+    talk.scan = undefined
+    throw err
+  })
+  return talk.scan
+}
+
+const agentTypeOf = async ($: EngineInterface, talk: TalkState, ...keys: unknown[]): Promise<string | undefined> => {
+  for (const agent of await $.agent.list()) noteAgent(talk, agent.type, agent.id, agent.name)
+  if (knownType(talk, keys) === undefined) await scanOnce($, talk)
+  return knownType(talk, keys)
+}
+
+const launchOf = async ($: EngineInterface, cache: AgentColorCache, runs: Map<string, boolean>, talk: TalkState, style: Style, call: LaunchCall): Promise<RowHint | undefined> => {
+  const type = delegatedType(call)
+  if (type !== undefined) noteAgent(talk, type, record(call.output).agentId)
+  if (style.toolStyle !== 'chat' || !launchedInBackground(call)) return undefined
+  const badgeColor = type === undefined ? undefined : (await colorsOf($, cache)).get(type)
+  return { kind: 'launch', launch: { continues: await continuesRun($, runs, call.tool_use_id), ...(badgeColor ? { badgeColor } : {}) } }
+}
+
+const hintOf = async ($: EngineInterface, cache: AgentColorCache, runs: Map<string, boolean>, talk: TalkState, style: Style, call: LaunchCall, send: TalkHint | undefined): Promise<{ hint?: RowHint }> => {
+  const launch = await launchOf($, cache, runs, talk, style, call)
+  if (launch) return { hint: launch }
+  return send ? { hint: { kind: 'send', send } } : {}
+}
+
+const talkHintOf = async ($: EngineInterface, cache: AgentColorCache, type: string | undefined, name: string): Promise<TalkHint> => {
+  if (type === undefined) return { kind: 'session', name }
+  const badgeColor = (await colorsOf($, cache)).get(type)
+  return { kind: 'agent', type, ...(badgeColor ? { badgeColor } : {}) }
+}
+
+const peerOf = async ($: EngineInterface, cache: AgentColorCache, talk: TalkState, style: Style, message: AsideMessage, key: string): Promise<TalkHint | undefined> => {
+  const sender = peerSender(style, message)
+  if (sender === undefined) return undefined
+  const kept = talk.hints.get(`msg:${key}`)
+  if (kept) return kept
+  const hint = await talkHintOf($, cache, await agentTypeOf($, talk, sender), sender)
+  rememberBounded(talk.hints, `msg:${key}`, hint)
+  return hint
+}
+
+const sendOf = async ($: EngineInterface, cache: AgentColorCache, talk: TalkState, style: Style, call: LaunchCall): Promise<TalkHint | undefined> => {
+  const to = record(call.input).to
+  if (style.toolStyle !== 'chat' || call.tool !== 'SendMessage' || typeof to !== 'string' || to === '') return undefined
+  const kept = talk.hints.get(`card:${call.tool_use_id}`)
+  if (kept) return kept
+  const resumed = record(call.output).resumedAgentId
+  const type = await agentTypeOf($, talk, to, resumed)
+  const send = type === undefined && typeof resumed === 'string' ? unknownAgent : await talkHintOf($, cache, type, to)
+  rememberBounded(talk.sends, call.tool_use_id, send.kind)
+  if (call.output !== undefined) rememberBounded(talk.hints, `card:${call.tool_use_id}`, send)
+  return send
+}
+
+const talkToggle = async ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, id: string): Promise<RowToggle | undefined> => {
+  const toggle = folder($, el, await read($, unfolded))(id, 0, 'msgfold', MESSAGE_LOOK)
+  return toggle.around === undefined ? undefined : { around: toggle.around, lit: rowLit(id), open: !toggle.folded }
+}
+
+const rowLit = (id: string): RowToggle['lit'] => ({ scope: `row:${instanceKey(id)}`, dimColor: false })
+
+const sendToggle = async ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, send: TalkHint | undefined, input: unknown, id: string): Promise<RowToggle | undefined> =>
+  send !== undefined && sentMessage(input) !== undefined ? talkToggle($, el, `card:${id}`) : undefined
+
+type TalkAside = { tools: ReadonlyMap<string, string>; el: ReturnType<EngineInterface['ui']['resolve']>; style: Style; message: AsideMessage; columns: number | undefined; key: string }
+
+const talkAside = async ($: EngineInterface, cache: AgentColorCache, talk: TalkState, at: TalkAside): Promise<RenderElement | undefined> => {
+  const peer = await peerOf($, cache, talk, at.style, at.message, at.key)
+  const toggle = peer === undefined ? undefined : await talkToggle($, at.el, `msg:${at.key}`)
+  return messageAside(at.el, at.style, at.message, at.columns, peer, at.tools, toggle)
 }
 
 export const register: Register = (on, options) => {
@@ -798,6 +873,7 @@ export const register: Register = (on, options) => {
   const fit = (viewport?: { isFullscreen?: boolean }): Style => (terminal === 'apple-terminal' && viewport?.isFullscreen ? { ...style, shape: 'inverse' } : style)
   const agentColors: AgentColorCache = {}
   const launchRuns = new Map<string, boolean>()
+  const talk: TalkState = { hints: new Map(), sends: new Map(), agents: new Map() }
   let prompts = 0
   const latex: LatexSession = { style, color: ratexColor(style.theme.diagramText ?? style.theme.codeText ?? '#808080'), pending: new Set(), wanted: new Set(), batch: [], queue: Promise.resolve() }
   const picked: Picked = { theme: firstTheme, options, latex }
@@ -821,8 +897,9 @@ export const register: Register = (on, options) => {
   if (options.toolRows !== false) {
     on('ui.render', { component: 'ToolProgress' }, async ($, e, next) => {
       const tool = callTools.get(e.props.tool_use_id)
-      if (tool === undefined || !hintAside(style, e.props, tool)) return next(e)
-      return renderHintAside($.ui.resolve(e), fit(e.viewport), e.viewport?.columns, tool, e.props.hint)
+      const send = talk.sends.get(e.props.tool_use_id)
+      if (tool === undefined || !hintAside(style, e.props, tool, send)) return next(e)
+      return renderHintAside($.ui.resolve(e), fit(e.viewport), e.viewport?.columns, tool, send, e.props.hint)
     })
     on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
       await locate($, style)
@@ -852,9 +929,10 @@ export const register: Register = (on, options) => {
         const folds = foldsResult(style, e.props.tool, callEnding(e.props) === 'failed') && !e.props.isExpanded && !e.props.isRunning && !readOnlyCalls.has(e.props.tool_use_id)
         const look = folds ? RESULT_LOOK : foldLook(style, e.props.isErrored ? ' error' : ' diff')
         const toggle = (foldable && rowToggles(style)) || folds ? folder($, el, await read($, unfolded))(`card:${e.props.tool_use_id}`, 0, 'rowfold', look) : null
-        const lit = { scope: `row:${instanceKey(e.props.tool_use_id)}`, dimColor: false }
-        const row = toggle?.around ? { around: toggle.around, lit } : undefined
-        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}), ...(await launchOf($, agentColors, launchRuns, style, e.props)) }, e.viewport?.columns, row)
+        const lit = rowLit(e.props.tool_use_id)
+        const send = await sendOf($, agentColors, talk, style, e.props)
+        const row = (await sendToggle($, el, send, e.props.input, e.props.tool_use_id)) ?? (toggle?.around ? { around: toggle.around, lit } : undefined)
+        return renderToolRow(el, forSurface(fit(e.viewport), e.surface, await linkReach($, probes, style)), { ...e.props, ...(stats ? { stats } : {}), ...(await hintOf($, agentColors, launchRuns, talk, style, e.props, send)) }, e.viewport?.columns, row)
       }
       const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
       return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns) : next(e)
@@ -888,8 +966,7 @@ export const register: Register = (on, options) => {
         if (folded) return <el.Box />
         const asked = isAsk(e.props.tool) && ending !== 'failed' ? renderAnswers(el, fit(e.viewport), askInputs.get(e.props.tool_use_id), e.props.output, declined, e.viewport?.columns) : undefined
         if (asked) return asked
-        const failure = quiet && e.props.isErrored ? renderFailure(el, fit(e.viewport), e.props.output) : undefined
-        return asideResult(el, fit(e.viewport), e.viewport?.columns, call, failure) ?? next(e)
+        return asideResult(el, fit(e.viewport), e.viewport?.columns, call, talk.sends.get(e.props.tool_use_id), quiet && e.props.isErrored) ?? next(e)
       }
       if (!quiet) return next(e)
       await locate($, style)
@@ -1069,7 +1146,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const kind = e.props.origin.kind
     const own = kind === 'composer' || kind === 'bridge' || (kind === 'unclassified' && !e.props.from && !e.props.task)
-    const aside = messageAside($.ui.resolve(e), fit(e.viewport), e.props, e.viewport?.columns, await peerColors($, agentColors, style, e.props), callTools)
+    const aside = await talkAside($, agentColors, talk, { tools: callTools, el: $.ui.resolve(e), style: fit(e.viewport), message: e.props, columns: e.viewport?.columns, key: e.requestId })
     if (aside) return aside
     if (!own) return next(e)
     const at = style.clock === 'off' ? undefined : sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))

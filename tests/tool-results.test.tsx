@@ -19,6 +19,8 @@ const inApp = (on: On, messages: unknown[] = [], agents: unknown[] = []) => {
   claudeAt(on, '2.1.295')
 }
 
+const SUBAGENTS = [{ id: 'a1b2', type: 'general-purpose', description: 'Look around', status: 'completed' }]
+
 const QUESTIONS = [{
   question: 'Which scope should I review?',
   header: 'Scope',
@@ -90,10 +92,16 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(verb?.props.color).toBeUndefined()
     expect(verb?.props.dimColor).toBe(true)
     await row.unmount()
+  })
+
+  test(`agentTint icon leaves a subagent's message text uncolored, its reply glyph in agentColor on ${surface}`, { options: { agentTint: 'icon' } }, async ($, on) => {
+    engine(on)
+    inApp(on, [], SUBAGENTS)
     const message = await $.ui.mount(peer)
-    expect((await message.find({ type: 'Text', text: /^ »$/ }))?.props.color).toBe('blue')
-    expect((await message.find({ type: 'Text', text: /^Message from $/ }))?.props.color).toBeUndefined()
-    expect((await message.find({ type: 'Text', text: /^general-purpose$/ }))?.props.color).toBeUndefined()
+    expect((await message.find({ type: 'Text', text: /^ «$/ }))?.props.color).toBe('blue')
+    expect(await message.find({ type: 'Text', text: /^from subagent: general-purpose · beta: version 0\.35\.2$/ })).toBeTruthy()
+    expect((await message.find({ type: 'Text', text: /^ · beta: version 0\.35\.2$/ }))?.props.color).toBeUndefined()
+    expect((await message.find({ type: 'Text', text: /^from subagent: $/ }))?.props.color).toBeUndefined()
     await message.unmount()
   })
 
@@ -119,34 +127,85 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
   const sendRow = { ...view, component: 'ToolUse' as const, props: { tool_use_id: 'm-1', tool: 'SendMessage', input: { to: 'a1b2', summary: 'Ask beta for the default', message: 'Follow-up 1' }, output: { success: true }, isRunning: false, isErrored: false, isInterrupted: false } }
 
-  test(`a SendMessage row says Messaged with its summary, as a subagent row on ${surface}`, async ($, on) => {
+  test(`a SendMessage to one of this session's agents reads to subagent: with its type in bold and its summary, agentIcon in agentColor on ${surface}`, async ($, on) => {
     engine(on)
-    inApp(on)
+    inApp(on, [], SUBAGENTS)
     const row = await $.ui.mount(sendRow)
     expect(await asideIn(row)).toBe(true)
-    expect(await row.find({ type: 'Text', text: /^Messaged$/ })).toBeTruthy()
-    expect(await row.find({ type: 'Text', text: /^Ask beta for the default$/ })).toBeTruthy()
+    expect(await row.find({ type: 'Text', text: /^to subagent: general-purpose · Ask beta for the default$/ })).toBeTruthy()
+    expect((await row.find({ type: 'Text', text: /^general-purpose$/ }))?.props.bold).toBe(true)
     expect((await row.find({ type: 'Text', text: /^ »$/ }))?.props.color).toBe('blue')
     await row.unmount()
   })
 
-  test(`a message from another agent draws as a subagent row: its sender and first line, agentIcon in agentColor on the right on ${surface}`, async ($, on) => {
+  test(`a message from one of this session's agents reads from subagent: with its type in bold, agentReplyIcon in agentColor on the right on ${surface}`, async ($, on) => {
     engine(on)
-    inApp(on)
+    inApp(on, [], SUBAGENTS)
     const ui = await $.ui.mount(peer)
     expect(await asideIn(ui)).toBe(true)
-    expect(await ui.find({ type: 'Text', text: /^Message from general-purpose · beta: version 0\.35\.2$/ })).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /^ »$/ }))?.props.color).toBe('blue')
+    expect(await ui.find({ type: 'Text', text: /^from subagent: general-purpose · beta: version 0\.35\.2$/ })).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^general-purpose$/ }))?.props.bold).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^ «$/ }))?.props.color).toBe('blue')
     expect(await ui.find({ type: 'Text', text: /^engine$/ })).toBeUndefined()
     await ui.unmount()
   })
 
-  test(`a message from another agent follows agentAlign left, and the expanded view keeps Claude Code's drawing on ${surface}`, { options: { agentAlign: 'left' } }, async ($, on) => {
+  const fromSession = { ...peer, props: { ...peer.props, text: 'review stage: 7 of 7 jobs submitted', from: { name: 'plugin-prismantis-d8' } } }
+  const toSession = { ...sendRow, props: { ...sendRow.props, tool_use_id: 'm-2', input: { to: 'plugin-prismantis-d8', summary: 'Ask for its status', message: 'Where are you?' } } }
+
+  test(`a message from another session reads from session: with its name in bold, sessionReplyIcon in sessionColor on the right on ${surface}`, async ($, on) => {
     engine(on)
-    inApp(on)
+    inApp(on, [], SUBAGENTS)
+    const ui = await $.ui.mount(fromSession)
+    expect(await asideIn(ui)).toBe(true)
+    expect(await ui.find({ type: 'Text', text: /^from session: plugin-prismantis-d8 · review stage: 7 of 7 jobs submitted$/ })).toBeTruthy()
+    const head = await ui.find({ type: 'Text', text: /^from session: $/ })
+    expect(head?.props.color).toBe('magenta')
+    expect(head?.props.bold).toBeFalsy()
+    expect((await ui.find({ type: 'Text', text: /^ · review stage: 7 of 7 jobs submitted$/ }))?.props.color).toBe('magenta')
+    expect((await ui.find({ type: 'Text', text: /^plugin-prismantis-d8$/ }))?.props.bold).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^ ⇠$/ }))?.props.color).toBe('magenta')
+    await ui.unmount()
+  })
+
+  test(`a SendMessage to another session reads to session: with its name in bold, sessionIcon in sessionColor on ${surface}`, async ($, on) => {
+    engine(on)
+    inApp(on, [], SUBAGENTS)
+    const row = await $.ui.mount(toSession)
+    expect(await row.find({ type: 'Text', text: /^to session: plugin-prismantis-d8 · Ask for its status$/ })).toBeTruthy()
+    expect((await row.find({ type: 'Text', text: /^ ⇢$/ }))?.props.color).toBe('magenta')
+    await row.unmount()
+  })
+
+  test(`sessionAlign left puts session rows with Claude's replies while subagent rows stay right, and sessionTint none drops their color on ${surface}`, { options: { sessionAlign: 'left', sessionTint: 'none' } }, async ($, on) => {
+    engine(on)
+    inApp(on, [], SUBAGENTS)
+    const session = await $.ui.mount(fromSession)
+    expect(await asideIn(session)).toBe(false)
+    expect((await session.find({ type: 'Text', text: /^from session: $/ }))?.props.color).toBeUndefined()
+    await session.unmount()
+    const agent = await $.ui.mount(peer)
+    expect(await asideIn(agent)).toBe(true)
+    await agent.unmount()
+  })
+
+  test(`a failed send to a session draws its quiet failure on the sessionAlign side, not the agentAlign one, on ${surface}`, { options: { sessionAlign: 'left', toolOutput: 'quiet' } }, async ($, on) => {
+    engine(on)
+    inApp(on, [], SUBAGENTS)
+    const row = await $.ui.mount(toSession)
+    expect(await asideIn(row)).toBe(false)
+    await row.unmount()
+    const failure = await $.ui.mount({ ...view, component: 'ToolResult', props: { tool_use_id: toSession.props.tool_use_id, tool: 'SendMessage', output: 'No session named plugin-prismantis-d8', isErrored: true } })
+    expect(await failure.find({ type: 'Text', text: /No session named/ })).toBeTruthy()
+    expect(await asideIn(failure)).toBe(false)
+    await failure.unmount()
+  })
+
+  test(`a message from one of this session's agents follows agentAlign left, and the expanded view keeps Claude Code's drawing on ${surface}`, { options: { agentAlign: 'left' } }, async ($, on) => {
+    engine(on)
+    inApp(on, [], SUBAGENTS)
     const ui = await $.ui.mount(peer)
     expect(await asideIn(ui)).toBe(false)
-    expect((await ui.find({ type: 'Text', text: /^Message from $/ }))?.props.color).toBe('blue')
     expect((await ui.find({ type: 'Text', text: /^general-purpose$/ }))?.props.color).toBe('blue')
     await ui.unmount()
     const open = await $.ui.mount({ ...peer, props: { ...peer.props, isExpanded: true } })
@@ -667,17 +726,31 @@ test('a message from a colored agent of this session draws its sender as the sam
   agentFiles(on, COLORED)
   const ui = await $.ui.mount(peerFrom('feature-dev:code-explorer'))
   expect((await ui.find({ type: 'Text', text: /^feature-dev:code-explorer$/ }))?.props.backgroundColor).toBe('#ca8a04')
-  expect(await ui.find({ type: 'Text', text: /^Message from feature-dev:code-explorer · explorer: 24 files$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^from subagent: feature-dev:code-explorer · explorer: 24 files$/ })).toBeTruthy()
   await ui.unmount()
 })
 
-test('a session named like an agent type that is not one of this session\'s agents gets no badge', async ($, on) => {
+test('a session named like an agent type that is not one of this session\'s agents draws as a session, with no badge', async ($, on) => {
   engine(on)
   inApp(on)
   agentFiles(on, COLORED)
   const ui = await $.ui.mount(peerFrom('weekly-news'))
   expect((await ui.find({ type: 'Text', text: /^weekly-news$/ }))?.props.backgroundColor).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^from session: weekly-news · explorer: 24 files$/ })).toBeTruthy()
   await ui.unmount()
+})
+
+test('a row keeps the direction it was first drawn with once its subagent leaves the agent list', async ($, on) => {
+  engine(on)
+  const agents: unknown[] = [{ id: 'a-7', type: 'feature-dev:code-explorer', description: 'Look', status: 'completed' }]
+  inApp(on, [], agents)
+  const first = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-1' })
+  expect(await first.find({ type: 'Text', text: /^from subagent: / })).toBeTruthy()
+  await first.unmount()
+  agents.length = 0
+  const again = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-1' })
+  expect(await again.find({ type: 'Text', text: /^from subagent: / })).toBeTruthy()
+  await again.unmount()
 })
 
 test('a symlinked agent definition gives its color like a regular file', async ($, on) => {
@@ -745,4 +818,180 @@ test('a launch that continues a run draws only its type and description, no head
   expect(await second.find({ type: 'Text', text: /background agents launched/ })).toBeUndefined()
   expect(await second.find({ type: 'Text', text: /^general-purpose \(second\) {2}$/ })).toBeTruthy()
   await second.unmount()
+})
+
+test('a subagent that has left the agent list still counts as a subagent when it was seen launching', async ($, on) => {
+  engine(on)
+  const agents: unknown[] = []
+  inApp(on, [], agents)
+  const launch = await $.ui.mount(launchOf('k-1', 'feature-dev:code-explorer'))
+  await launch.unmount()
+  const reply = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-9' })
+  expect(await reply.find({ type: 'Text', text: /^from subagent: feature-dev:code-explorer · / })).toBeTruthy()
+  await reply.unmount()
+})
+
+test('a finished notice tied to the SendMessage that resumed a subagent is a subagent row', async ($, on) => {
+  engine(on)
+  inApp(on, [], [{ id: 'a-5', type: 'general-purpose', description: 'Look', status: 'completed' }])
+  const send = await $.ui.mount({ ...wide, component: 'ToolUse', props: { tool_use_id: 's-5', tool: 'SendMessage', input: { to: 'a-5', summary: 'Follow-up' }, output: { success: true, resumedAgentId: 'a-5' }, isRunning: false, isErrored: false, isInterrupted: false } })
+  await send.unmount()
+  const notice = await $.ui.mount({ ...wide, component: 'UserMessage', props: { text: 'Agent "Look" finished', origin: { kind: 'task-notification' }, task: { status: 'completed', toolUseId: 's-5' }, isExpanded: false } })
+  expect((await notice.find({ type: 'Text', text: /^ »$/ }))?.props.color).toBe('blue')
+  await notice.unmount()
+})
+
+test('a send that reports success false says failed, its glyph in the failure color', async ($, on) => {
+  engine(on)
+  inApp(on)
+  const ui = await $.ui.mount({ ...wide, component: 'ToolUse', props: { tool_use_id: 's-6', tool: 'SendMessage', input: { to: 'gone-session', summary: 'Ping' }, output: { success: false, message: 'No agent named gone-session is reachable.' }, isRunning: false, isErrored: false, isInterrupted: false } })
+  expect(await ui.find({ type: 'Text', text: /^to session: gone-session · Ping failed$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+const headHover = async (ui: { find: (q: { type: 'Text'; text: RegExp }) => Promise<unknown> }) => {
+  const line = await ui.find({ type: 'Text', text: /^from session: cage-2026-11-03-2 · pong from cage-2026-11-03-2$/ }) as { children?: { hover?: Record<string, unknown> }[] } | undefined
+  return line?.children?.[0]?.hover
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  const surfaced = { ...wide, surface }
+  const sessionPing = { ...surfaced, component: 'UserMessage' as const, props: { text: 'pong from cage-2026-11-03-2\nsecond line', origin: { kind: 'peer' as const }, from: { name: 'cage-2026-11-03-2' }, isExpanded: false } }
+  const sentPing = { ...surfaced, component: 'ToolUse' as const, props: { tool_use_id: `s-9-${surface}`, tool: 'SendMessage', input: { to: 'cage-2026-11-03-2', summary: 'Ping', message: 'Please reply pong.' }, output: { success: true }, isRunning: false, isErrored: false, isInterrupted: false } }
+
+  test(`talkPreview false ends a message row at the name on ${surface}`, { options: { talkPreview: false } }, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount(sessionPing)
+    expect(await ui.find({ type: 'Text', text: /^from session: cage-2026-11-03-2$/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /pong from/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test(`clicking a message row opens the whole message under it and clicking again closes it on ${surface}`, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount({ ...sessionPing, requestId: 'u-click' })
+    expect(await labelled(ui, 'show message')).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /^pong from cage-2026-11-03-2\nsecond line$/ })).toBeUndefined()
+    await ui.press({ key: 'msgfold.rows' })
+    expect(await ui.find({ type: 'Text', text: /^pong from cage-2026-11-03-2\nsecond line$/ })).toBeTruthy()
+    expect(await labelled(ui, 'hide message')).toBeTruthy()
+    await ui.press({ key: 'msgfold.rows' })
+    expect(await ui.find({ type: 'Text', text: /^pong from cage-2026-11-03-2\nsecond line$/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test(`clicking a SendMessage row opens the message that was sent, and its folded result with it, on ${surface}`, { options: { toolResults: 'folded' } }, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const row = await $.ui.mount(sentPing)
+    await row.press({ key: 'msgfold.rows' })
+    expect(await row.find({ type: 'Text', text: /^Please reply pong\.$/ })).toBeTruthy()
+    await row.unmount()
+    const result = await $.ui.mount({ ...surfaced, component: 'ToolResult', props: { tool_use_id: sentPing.props.tool_use_id, tool: 'SendMessage', output: { success: true }, isErrored: false } })
+    expect(await result.find({ type: 'Text', text: /^engine$/ })).toBeTruthy()
+    await result.unmount()
+  })
+
+  test(`a SendMessage with no message text keeps the usual row toggle, not a message toggle, on ${surface}`, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount({ ...sentPing, props: { ...sentPing.props, tool_use_id: `s-10-${surface}`, input: { to: 'cage-2026-11-03-2', summary: 'Ping' } } })
+    expect(await labelled(ui, 'show message')).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test(`talkMessageColor plain draws the message text in the usual text color, the head and name keeping the row color, on ${surface}`, { options: { talkMessageColor: 'plain', codeTextColor: '#dddddd' } }, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount(sessionPing)
+    expect((await ui.find({ type: 'Text', text: /^ · pong from cage-2026-11-03-2$/ }))?.props.color).toBe('#dddddd')
+    expect((await ui.find({ type: 'Text', text: /^from session: $/ }))?.props.color).toBe('magenta')
+    await ui.unmount()
+  })
+
+  test(`an opened message sits on the edit card background on ${surface}`, { options: { diffBackgroundColor: '#202030' } }, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount({ ...sessionPing, requestId: 'u-bg' })
+    await ui.press({ key: 'msgfold.rows' })
+    expect((await ui.findAll({ type: 'Box' })).find(b => b.props.backgroundColor === '#202030')).toBeTruthy()
+    await ui.unmount()
+  })
+
+  test(`hovering a message row in a hex color softens that color toward the background, keeping its hue, on ${surface}`, { options: { sessionColor: '#d6409f' } }, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount({ ...sessionPing, requestId: 'u-hex' })
+    const hover = await headHover(ui)
+    expect(hover?.dimColor).toBeUndefined()
+    expect(hover?.color).toMatch(/^#[0-9a-f]{6}$/)
+    expect(hover?.color).not.toBe('#d6409f')
+    await ui.unmount()
+  })
+
+  test(`hovering a message row in a named color falls back to the terminal dim on ${surface}`, async ($, on) => {
+    engine(on)
+    inApp(on)
+    const ui = await $.ui.mount({ ...sessionPing, requestId: 'u-named' })
+    expect((await headHover(ui))?.dimColor).toBe(true)
+    await ui.unmount()
+  })
+}
+
+test('two subagent replies drawn at once after a reload both wait for the one transcript scan', async ($, on) => {
+  engine(on)
+  inApp(on, [{ role: 'assistant', text: '', toolUses: [{ tool_use_id: 'x-2', tool: 'Agent', input: { subagent_type: 'feature-dev:code-explorer', description: 'Look', prompt: 'Look.' }, agentId: 'a-r', result: { status: 'async_launched', agentId: 'a-r' } }] }])
+  const [a, b] = await Promise.all([$.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-a' }), $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-b' })])
+  expect(await a.find({ type: 'Text', text: /^from subagent: / })).toBeTruthy()
+  expect(await b.find({ type: 'Text', text: /^from subagent: / })).toBeTruthy()
+  await a.unmount()
+  await b.unmount()
+})
+
+test('a foreground Agent call is remembered too, so its replies stay subagent rows once it leaves the agent list', async ($, on) => {
+  engine(on)
+  inApp(on)
+  const call = await $.ui.mount({ ...wide, component: 'ToolUse', props: { tool_use_id: 'f-9', tool: 'Agent', input: { subagent_type: 'feature-dev:code-reviewer', description: 'Review', prompt: 'Review.' }, output: { status: 'completed' }, isRunning: false, isErrored: false, isInterrupted: false } })
+  await call.unmount()
+  const reply = await $.ui.mount({ ...peerFrom('feature-dev:code-reviewer'), requestId: 'u-fg' })
+  expect(await reply.find({ type: 'Text', text: /^from subagent: feature-dev:code-reviewer · / })).toBeTruthy()
+  await reply.unmount()
+})
+
+test('after a reload a subagent missing from the agent list is still found through its Agent call in the transcript', async ($, on) => {
+  engine(on)
+  inApp(on, [{ role: 'assistant', text: '', toolUses: [{ tool_use_id: 'x-1', tool: 'Agent', input: { subagent_type: 'feature-dev:code-explorer', description: 'Look', prompt: 'Look.' }, agentId: 'a-old' }] }])
+  const ui = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-old' })
+  expect(await ui.find({ type: 'Text', text: /^from subagent: feature-dev:code-explorer · / })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('after a reload a SendMessage to a subagent id is found through the Agent call that spawned it', async ($, on) => {
+  engine(on)
+  inApp(on, [{ role: 'assistant', text: '', toolUses: [{ tool_use_id: 'x-3', tool: 'Agent', input: { subagent_type: 'feature-dev:code-explorer', description: 'Look', prompt: 'Look.' }, agentId: 'a-gone' }] }])
+  const ui = await $.ui.mount({ ...wide, component: 'ToolUse', props: { tool_use_id: 'm-gone', tool: 'SendMessage', input: { to: 'a-gone', summary: 'Go on', message: 'Go on.' }, output: { success: true }, isRunning: false, isErrored: false, isInterrupted: false } })
+  expect(await ui.find({ type: 'Text', text: /^to subagent: feature-dev:code-explorer · Go on$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a transcript scan that failed is tried again on the next row, not kept failed', async ($, on) => {
+  engine(on)
+  mock.env(on, { HOME: '/home/demo' })
+  on('session.root', () => ({ value: '/home/demo/app' }))
+  on('agent.list', () => ({ value: [] as never }))
+  claudeAt(on, '2.1.295')
+  let reads = 0
+  on('session.messages', () => {
+    reads += 1
+    if (reads === 1) throw new Error('transcript not ready')
+    return { value: [{ role: 'assistant', text: '', toolUses: [{ tool_use_id: 'x-4', tool: 'Agent', input: { subagent_type: 'feature-dev:code-explorer', description: 'Look', prompt: 'Look.' }, agentId: 'a-4' }] }] as never }
+  })
+  const first = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-4a' }).catch(() => undefined)
+  await first?.unmount()
+  const ui = await $.ui.mount({ ...peerFrom('feature-dev:code-explorer'), requestId: 'u-4b' })
+  expect(await ui.find({ type: 'Text', text: /^from subagent: feature-dev:code-explorer · / })).toBeTruthy()
+  expect(reads).toBe(2)
+  await ui.unmount()
 })

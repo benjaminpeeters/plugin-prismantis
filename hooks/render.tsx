@@ -9,7 +9,7 @@ import { mathOf } from './latex'
 import { CONTROL, displayText, inlineText, isWebLink, nestedBlocks, texText } from './markdown'
 import type { Flow } from './rtl'
 import { LTR_BLANK, ROW_MARK, ROW_MARK_TEXT, WALL, codeVisual, commentTail, commentVisual, containsRtl, flow, hasRtl, heldCell, listMarker, opensLatin, terminalLine } from './rtl'
-import type { Style, Theme } from './theme'
+import type { Side, Style, Theme, Tint } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
 
@@ -1410,9 +1410,21 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   return out
 }
 
-export type ToolRow = { tool: string; input: unknown; output?: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats; launch?: LaunchHint }
+export type ToolRow = { tool: string; input: unknown; output?: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean; stats?: FileStats; hint?: RowHint }
 
-export type LaunchHint = { continues: boolean; badgeColor?: string }
+export type TalkHint = { kind: 'agent'; type: string; badgeColor?: string } | { kind: 'agent'; type?: undefined } | { kind: 'session'; name: string }
+
+export type TalkKind = TalkHint['kind']
+
+const UNKNOWN_AGENT = 'subagent'
+
+export const unknownAgent: Readonly<TalkHint> = { kind: 'agent' }
+
+const talkName = (hint: TalkHint): string => (hint.kind === 'agent' ? hint.type ?? UNKNOWN_AGENT : hint.name)
+
+type LaunchHint = { continues: boolean; badgeColor?: string }
+
+export type RowHint = { kind: 'launch'; launch: LaunchHint } | { kind: 'send'; send: TalkHint }
 
 export type FileStats = { added: number; removed: number }
 
@@ -1452,7 +1464,7 @@ const DELEGATE_TOOLS = ['Agent', 'Task']
 
 const AGENT_TOOLS = [...DELEGATE_TOOLS, 'SendMessage']
 
-type RowKind = 'ask' | 'agent' | 'tool'
+type RowKind = 'ask' | 'agent' | 'session' | 'tool'
 
 const messageTarget = (input: unknown): string | undefined => field(input, 'summary', 'to')
 
@@ -1466,22 +1478,39 @@ const isAgent = (tool: string | undefined): boolean => tool !== undefined && AGE
 
 const isDelegate = (tool: string | undefined): boolean => tool !== undefined && DELEGATE_TOOLS.includes(tool)
 
+export const delegatedType = (call: { tool: string; input: unknown }): string | undefined => (isDelegate(call.tool) ? subagentType(call.input) : undefined)
+
 const rowKind = (tool: string | undefined): RowKind => (isAsk(tool) ? 'ask' : isAgent(tool) ? 'agent' : 'tool')
 
-const agentColor = (t: Theme): string | undefined => t.agent ?? t.accent
+const kindOf = (tool: string, send: TalkKind | undefined): RowKind => send ?? rowKind(tool)
 
-const agentTone = (style: Style, kind: RowKind, part: 'icon' | 'text'): string | undefined =>
-  kind !== 'agent' || style.agentTint === 'none' || (part === 'text' && style.agentTint !== 'row') ? undefined : agentColor(style.theme)
+const callKind = (row: ToolRow): RowKind => kindOf(row.tool, row.hint?.kind === 'send' ? row.hint.send.kind : undefined)
+
+const talks = (kind: RowKind): kind is TalkKind => kind === 'agent' || kind === 'session'
+
+type TalkLook = { tint: (style: Style) => Tint; color: (theme: Theme) => string | undefined; align: (style: Style) => Side; to: string; from: string; replyIcon: (style: Style) => string }
+
+const TALK_LOOKS: Record<TalkKind, TalkLook> = {
+  agent: { tint: style => style.agentTint, color: theme => theme.agent, align: style => style.agentAlign, to: 'to subagent: ', from: 'from subagent: ', replyIcon: style => style.agentReplyIcon },
+  session: { tint: style => style.sessionTint, color: theme => theme.session, align: style => style.sessionAlign, to: 'to session: ', from: 'from session: ', replyIcon: style => style.sessionReplyIcon },
+}
+
+const talkTone = (style: Style, kind: RowKind, part: 'icon' | 'text'): string | undefined => {
+  if (!talks(kind)) return undefined
+  const tint = TALK_LOOKS[kind].tint(style)
+  if (tint === 'none' || (part === 'text' && tint !== 'row')) return undefined
+  return TALK_LOOKS[kind].color(style.theme) ?? style.theme.accent
+}
 
 const leadColor = (style: Style, kind: RowKind): string | undefined =>
-  kind === 'ask' ? askColor(style.theme) : kind === 'agent' ? agentTone(style, kind, 'text') : undefined
+  kind === 'ask' ? askColor(style.theme) : talks(kind) ? talkTone(style, kind, 'text') : undefined
 
 const isDecline = (output: unknown): boolean => typeof output === 'string' && /user rejected tool use|doesn't want to proceed/i.test(output)
 
 const statusColor = (style: Style, row: ToolRow) => {
   const t = style.theme
   if (isAsk(row.tool) && callEnding(row) !== 'failed') return askColor(t)
-  const tone = callEnding(row) === undefined ? agentTone(style, rowKind(row.tool), 'icon') : undefined
+  const tone = callEnding(row) === undefined ? talkTone(style, callKind(row), 'icon') : undefined
   return tone ?? (row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number)
 }
 
@@ -1503,10 +1532,10 @@ const chatWidth = (style: Style, columns: number | undefined): number | '100%' =
 const chatColumn = (style: Style, columns: number | undefined): number => Math.max(20, Math.floor(chatSpan(style, columns) * 0.6))
 
 const sitsLeft = (style: Style, kind: RowKind): boolean =>
-  style.toolStyle === 'chat' && ((kind === 'ask' && style.askAlign === 'left') || (kind === 'agent' && style.agentAlign === 'left'))
+  style.toolStyle === 'chat' && ((kind === 'ask' && style.askAlign === 'left') || (talks(kind) && TALK_LOOKS[kind].align(style) === 'left'))
 
 const rowTone = (style: Style, kind: RowKind): { tint: string | undefined; dim: boolean } => {
-  const tint = agentTone(style, kind, 'text')
+  const tint = talkTone(style, kind, 'text')
   return { tint, dim: toolDim(style) && !sitsLeft(style, kind) && tint === undefined }
 }
 
@@ -1519,11 +1548,13 @@ const stepRule = ({ Box, Text }: ElementTable, columns: number): RenderElement =
 export const withStepRule = (el: ElementTable, isStepped: boolean, columns: number, row: RenderElement): RenderElement =>
   isStepped ? <el.Box flexDirection="column">{stepRule(el, columns)}{row}</el.Box> : row
 
-const rowIcon = (style: Style, kind: RowKind): string => (kind === 'ask' ? style.askIcon : kind === 'agent' ? style.agentIcon : style.toolIcon)
+const ROW_ICONS: Record<RowKind, (style: Style) => string> = {
+  ask: style => style.askIcon, agent: style => style.agentIcon, session: style => style.sessionIcon, tool: style => style.toolIcon,
+}
 
-const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | undefined, label: string, color: string | undefined, running: boolean, kind: RowKind, text: RenderElement) => {
+const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | undefined, label: string, color: string | undefined, running: boolean, kind: RowKind, text: RenderElement, glyph?: string) => {
   const { Box, Text } = el
-  const icon = rowIcon(style, kind)
+  const icon = glyph ?? ROW_ICONS[kind](style)
   if (sitsLeft(style, kind)) {
     const row = <Box key="row" flexDirection="row">{toolGutter(el, style, color, running, icon)}<Box flexShrink={1}>{text}</Box></Box>
     return withStepRule(el, style.stepMark, columnsOf({ columns: viewportColumns }), row)
@@ -1540,11 +1571,11 @@ const toolLayout = (el: ElementTable, style: Style, viewportColumns: number | un
 
 const OWN_RESULTS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']
 
-export const renderHintAside = (el: ElementTable, style: Style, columns: number | undefined, tool: string, hint: string): RenderElement =>
-  renderResultAside(el, style, columns, rowKind(tool), <el.Text dimColor>{hint}</el.Text>)
+export const renderHintAside = (el: ElementTable, style: Style, columns: number | undefined, tool: string, send: TalkKind | undefined, hint: string): RenderElement =>
+  renderResultAside(el, style, columns, kindOf(tool, send), <el.Text dimColor>{hint}</el.Text>)
 
-export const hintAside = (style: Style, progress: { kind: string; hint?: string }, tool: string): boolean =>
-  style.toolStyle === 'chat' && progress.kind === 'background_hint' && !!progress.hint && !sitsLeft(style, rowKind(tool))
+export const hintAside = (style: Style, progress: { kind: string; hint?: string }, tool: string, send: TalkKind | undefined): boolean =>
+  style.toolStyle === 'chat' && progress.kind === 'background_hint' && !!progress.hint && !sitsLeft(style, kindOf(tool, send))
 
 const PEER_KINDS: readonly PromptOrigin['kind'][] = ['peer', 'peer-send-message']
 
@@ -1557,10 +1588,9 @@ const drawsAside = (style: Style, message: AsideMessage): boolean => style.toolS
 export const peerSender = (style: Style, message: AsideMessage): string | undefined =>
   drawsAside(style, message) && PEER_KINDS.includes(message.origin.kind) ? message.from?.name : undefined
 
-export const messageAside = (el: ElementTable, style: Style, message: AsideMessage, columns: number | undefined, senders: SenderColors, tools: ReadonlyMap<string, string>): RenderElement | undefined => {
+export const messageAside = (el: ElementTable, style: Style, message: AsideMessage, columns: number | undefined, peer: TalkHint | undefined, tools: ReadonlyMap<string, string>, toggle?: RowToggle): RenderElement | undefined => {
   if (message.origin.kind === 'task-notification') return drawsAside(style, message) ? renderTaskRow(el, style, message.text, message.task, columns, tools) : undefined
-  const sender = peerSender(style, message)
-  return sender === undefined ? undefined : renderPeerRow(el, style, sender, message.text, columns, senders.get(sender))
+  return peer === undefined ? undefined : renderPeerRow(el, style, peer, message.text, columns, toggle)
 }
 
 export const resultAside = (style: Style, tool: string): boolean => style.toolStyle === 'chat' && !OWN_RESULTS.includes(tool)
@@ -1574,8 +1604,10 @@ const renderResultAside = (el: ElementTable, style: Style, columns: number | und
 
 type ResultCall = Pick<ToolRow, 'tool' | 'output' | 'isErrored' | 'isInterrupted'> & { isExpanded?: boolean }
 
-export const asideResult = (el: ElementTable, style: Style, columns: number | undefined, call: ResultCall, failure: RenderElement | undefined): RenderElement | undefined => {
-  if (failure) return renderResultAside(el, style, columns, rowKind(call.tool), failure)
+export const asideResult = (el: ElementTable, style: Style, columns: number | undefined, call: ResultCall, send: TalkKind | undefined, quietFailure: boolean): RenderElement | undefined => {
+  const kind = kindOf(call.tool, send)
+  const failure = quietFailure ? failureLine(el, style, call.output, undefined, !sitsLeft(style, kind)) : undefined
+  if (failure) return renderResultAside(el, style, columns, kind, failure)
   return !call.isExpanded && style.toolStyle === 'chat' && launchedInBackground({ ...call, isRunning: false }) ? <el.Box /> : undefined
 }
 
@@ -1810,6 +1842,11 @@ export const contrast = (a: string, b: string): number => {
   return (hi! + 0.05) / (lo! + 0.05)
 }
 
+const readsOnBlack = (text: string): boolean => contrast(text, '#000000') >= contrast(text, '#ffffff')
+
+const groundOf = (text: string, background?: string): string =>
+  background && HEX.test(background) ? background : readsOnBlack(text) ? '#000000' : '#ffffff'
+
 const TEXT_CONTRAST = 4.5
 
 export const fullHue = (hex: string): string => {
@@ -1828,8 +1865,8 @@ export const fullHue = (hex: string): string => {
 // the hue, mixed into what; unset, 30% (dark) or 20% (light) into black or white.
 export const diffTint = (text: string | undefined, color: string | undefined, strength?: number, ground?: string): string | undefined => {
   if (!text || !color || !HEX.test(text) || !HEX.test(color)) return undefined
-  const dark = contrast(text, '#000000') >= contrast(text, '#ffffff')
-  const base = ground && HEX.test(ground) ? ground : dark ? '#000000' : '#ffffff'
+  const dark = readsOnBlack(text)
+  const base = groundOf(text, ground)
   const hue = fullHue(color)
   let share = strength ?? (dark ? 0.3 : 0.2)
   while (share > 0.05 && contrast(text, tint(base, hue, share)!) < TEXT_CONTRAST) share -= 0.01
@@ -2404,7 +2441,7 @@ export const previewBand = (theme: Theme, background?: string): string | undefin
   const text = theme.codeText
   if (!text || !HEX.test(text)) return undefined
   if (background && HEX.test(background)) return bandFrom(background, text)
-  const base = contrast(text, '#000000') >= contrast(text, '#ffffff') ? '#000000' : '#ffffff'
+  const base = groundOf(text)
   const inks = previewInks(theme).filter(c => contrast(c, base) >= TEXT_CONTRAST)
   let share = BAND_SHARE
   while (share > BAND_FLOOR && inks.some(c => contrast(c, tint(base, text, share)!) < TEXT_CONTRAST)) share = stepped(share, -0.01)
@@ -2577,14 +2614,17 @@ export const errorReason = (output: unknown): string | undefined => {
   return text.split('\n').map(l => l.trim()).filter(l => l !== '' && !NOISE_LINES.test(l)).at(-1)
 }
 
-export const renderFailure = (el: ElementTable, style: Style, output: unknown, key?: string): RenderElement | undefined => {
+export const renderFailure = (el: ElementTable, style: Style, output: unknown, key?: string): RenderElement | undefined =>
+  failureLine(el, style, output, key, style.toolStyle === 'chat')
+
+const failureLine = (el: ElementTable, style: Style, output: unknown, key: string | undefined, end: boolean): RenderElement | undefined => {
   const refusal = refusalReason(output)
   const reason = refusal ?? errorReason(output)
   if (reason === undefined) return undefined
   const chat = style.toolStyle === 'chat'
   const shown = refusal ?? shortenPaths(reason, style)
   return (
-    <el.Box key={key} flexDirection="row" width="100%" justifyContent={chat ? 'flex-end' : 'flex-start'}>
+    <el.Box key={key} flexDirection="row" width="100%" justifyContent={end ? 'flex-end' : 'flex-start'}>
       <el.Text color={style.theme.codeFlag} wrap={refusal === undefined ? 'truncate-middle' : 'wrap'}>{`${chat ? '' : heldLabel(style, '  ⎿ ', shown)}${shown}`}</el.Text>
     </el.Box>
   )
@@ -2619,7 +2659,9 @@ const callPieces = (call: ToolRow, style: Style): LinkPiece[] => {
   return [{ text: `${verb} ` }, { text: shortTarget(style, target), path }, ...(args ? [{ text: ` ${args}` }] : [])]
 }
 
-export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) => RenderElement; lit: TextHoverProps }
+export type RowToggle = { around: (text: RenderElement, hover: TextHoverProps) => RenderElement; lit: TextHoverProps; open?: boolean }
+
+export const MESSAGE_LOOK: FoldLook = { label: 'show message', close: 'hide message', whole: true }
 
 const quietToolRow = (el: ElementTable, style: Style, row: ToolRow, columns: number | undefined, toggle?: RowToggle): RenderElement => {
   const t = style.theme
@@ -2686,8 +2728,6 @@ const BADGE_TEXT = '#000000'
 
 export type AgentColors = ReadonlyMap<string, string>
 
-export type SenderColors = ReadonlyMap<string, string>
-
 export const agentDefinition = (text: string, file: string): { name: string; color?: string } => {
   const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
   const value = (key: string) => new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+?)["']?\\s*$`, 'm').exec(head)?.[1]
@@ -2695,10 +2735,10 @@ export const agentDefinition = (text: string, file: string): { name: string; col
   return { name: value('name') ?? file.replace(/\.md$/, ''), ...(color ? { color } : {}) }
 }
 
-export const subagentType = (input: unknown): string | undefined => field(input, 'subagent_type')
+const subagentType = (input: unknown): string | undefined => field(input, 'subagent_type')
 
-const agentBadge = ({ Text }: ElementTable, name: string, color: string | undefined, rest?: { color?: string; dimColor?: boolean; bold?: boolean }): RenderElement =>
-  color === undefined ? <Text {...rest}>{name}</Text> : <Text bold={rest?.bold} backgroundColor={color} color={BADGE_TEXT}>{name}</Text>
+const agentBadge = ({ Text }: ElementTable, name: string, color: string | undefined, rest?: { color?: string; dimColor?: boolean; bold?: boolean; hover?: TextHoverProps }): RenderElement =>
+  color === undefined ? <Text {...rest}>{name}</Text> : <Text bold={rest?.bold} backgroundColor={color} color={BADGE_TEXT} {...(rest?.hover ? { hover: rest.hover } : {})}>{name}</Text>
 
 const LAUNCH_HEAD = 'background agents launched'
 
@@ -2742,7 +2782,8 @@ const renderLaunchRow = (el: ElementTable, style: Style, row: ToolRow, launch: L
 }
 
 export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow, columns?: number, toggle?: RowToggle): RenderElement => {
-  if (row.launch !== undefined) return renderLaunchRow(el, style, row, row.launch, columns)
+  if (row.hint?.kind === 'launch') return renderLaunchRow(el, style, row, row.hint.launch, columns)
+  if (row.hint?.kind === 'send') return renderSendRow(el, style, row, row.hint.send, columns, toggle)
   if (style.toolOutput === 'quiet') return quietToolRow(el, style, row, columns, toggle)
   const { Text } = el
   const t = style.theme
@@ -3191,34 +3232,80 @@ export const formatDuration = (ms: number): string => {
 
 const isAgentTask = (text: string, task: AsideTask | undefined, tools: ReadonlyMap<string, string>): boolean => {
   const tool = task?.toolUseId === undefined ? undefined : tools.get(task.toolUseId)
-  return tool !== undefined ? isDelegate(tool) : task?.type === undefined && /^Agent "/.test(text)
+  return tool !== undefined ? isAgent(tool) : task?.type === undefined && /^Agent "/.test(text)
 }
 
 const renderTaskRow = (el: ElementTable, style: Style, text: string, task: AsideTask | undefined, columns: number | undefined, tools: ReadonlyMap<string, string>): RenderElement => {
   const t = style.theme
   const kind: RowKind = isAgentTask(text, task, tools) ? 'agent' : 'tool'
-  const color = task?.status === 'failed' ? t.codeFlag : task?.status === 'killed' ? t.codeComment : agentTone(style, kind, 'icon') ?? t.number
+  const color = task?.status === 'failed' ? t.codeFlag : task?.status === 'killed' ? t.codeComment : talkTone(style, kind, 'icon') ?? t.number
   const { tint, dim } = rowTone(style, kind)
   const summary = text.split('\n')[0] ?? ''
   const label = task?.durationMs === undefined ? summary : `${summary} · ${formatDuration(task.durationMs)}`
   return toolLayout(el, style, columns, label, color, false, kind, <el.Text wrap="truncate-end" color={tint} dimColor={dim}>{label}</el.Text>)
 }
 
-const renderPeerRow = (el: ElementTable, style: Style, name: string, text: string, columns: number | undefined, badgeColor: string | undefined): RenderElement => {
-  const color = agentTone(style, 'agent', 'icon') ?? style.theme.number
-  const { tint, dim } = rowTone(style, 'agent')
-  const left = sitsLeft(style, 'agent')
-  const line = text.split('\n').find(l => l.trim() !== '')?.trim()
-  const label = `Message from ${name}${line === undefined ? '' : ` · ${line}`}`
-  const lead = { bold: left || tint !== undefined, color: tint }
+type TalkRow = { direction: 'to' | 'from'; hint: TalkHint; line: string | undefined; whole: string | undefined; color: string | undefined; running: boolean; failed?: boolean }
+
+const SOFTEN_SHARE = 0.55
+
+const softGround = (style: Style): string => {
+  const text = style.theme.codeText
+  return groundOf(text && HEX.test(text) ? text : '#ffffff', style.background)
+}
+
+const softened = (style: Style, color: string | undefined, dim: boolean): TextHoverProps => {
+  if (dim) return { dimColor: false }
+  const soft = tint(softGround(style), color ?? style.theme.codeText, SOFTEN_SHARE)
+  return soft ? { color: soft } : { dimColor: true }
+}
+
+const badgeSoftened = (style: Style, scope: string | undefined, badgeColor: string): TextHoverProps => ({ scope, backgroundColor: tint(softGround(style), badgeColor, SOFTEN_SHARE) ?? badgeColor })
+
+const renderTalkRow = (el: ElementTable, style: Style, columns: number | undefined, row: TalkRow, toggle?: RowToggle): RenderElement => {
+  const kind = row.hint.kind
+  const { tint: ink, dim } = rowTone(style, kind)
+  const said = style.talkMessageColor === 'row' ? ink : style.theme.codeText
+  const line = style.talkPreview ? row.line : undefined
+  const name = talkName(row.hint)
+  const look = TALK_LOOKS[kind]
+  const head = row.direction === 'to' ? look.to : look.from
+  const label = `${head}${name}${line === undefined ? '' : ` · ${line}`}${row.failed ? ' failed' : ''}`
+  const hoverOf = (color: string | undefined) => (toggle ? { hover: { scope: toggle.lit.scope, ...softened(style, color, dim) } } : {})
+  const badgeColor = row.hint.kind === 'agent' && row.hint.type !== undefined ? row.hint.badgeColor : undefined
+  const badgeHover = toggle && badgeColor ? { hover: badgeSoftened(style, toggle.lit.scope, badgeColor) } : hoverOf(ink)
   const body = (
-    <el.Text wrap="truncate-end" color={tint} dimColor={dim}>
-      <el.Text {...lead}>Message from </el.Text>
-      {agentBadge(el, name, badgeColor, lead)}
-      {line === undefined ? null : ` · ${line}`}
+    <el.Text wrap="truncate-end" dimColor={dim} {...(toggle ? { hover: { scope: toggle.lit.scope } } : {})}>
+      <el.Text color={ink} {...hoverOf(ink)}>{head}</el.Text>
+      {agentBadge(el, name, badgeColor, { bold: true, color: ink, dimColor: dim, ...badgeHover })}
+      {line === undefined ? null : <el.Text color={said} {...hoverOf(said)}>{` · ${line}`}</el.Text>}
+      {row.failed ? <el.Text color={style.theme.codeFlag} {...hoverOf(style.theme.codeFlag)}> failed</el.Text> : null}
     </el.Text>
   )
-  return toolLayout(el, style, columns, label, color, false, 'agent', body)
+  const top = toolLayout(el, style, columns, label, row.color, row.running, kind, toggle ? toggle.around(body, { inverse: false, scope: toggle.lit.scope }) : body, row.direction === 'from' ? look.replyIcon(style) : undefined)
+  if (!toggle?.open || row.whole === undefined) return top
+  const opened = (
+    <el.Box flexDirection="column" {...cardFrame(style, style.theme.diffBackground)}>
+      <el.Text color={said}>{row.whole}</el.Text>
+    </el.Box>
+  )
+  return <el.Box flexDirection="column">{top}{renderResultAside(el, style, columns, kind, opened)}</el.Box>
+}
+
+const renderPeerRow = (el: ElementTable, style: Style, peer: TalkHint, text: string, columns: number | undefined, toggle?: RowToggle): RenderElement => {
+  const line = text.split('\n').find(l => l.trim() !== '')?.trim()
+  const color = talkTone(style, peer.kind, 'icon') ?? style.theme.number
+  return renderTalkRow(el, style, columns, { direction: 'from', hint: peer, line, whole: text, color, running: false }, toggle)
+}
+
+export const sentMessage = (input: unknown): string | undefined => field(input, 'message')
+
+const renderSendRow = (el: ElementTable, style: Style, row: ToolRow, send: TalkHint, columns: number | undefined, toggle?: RowToggle): RenderElement => {
+  const whole = sentMessage(row.input)
+  const line = field(row.input, 'summary') ?? whole?.split('\n')[0]
+  const failed = record(row.output).success === false
+  const color = failed ? style.theme.codeFlag : statusColor(style, row)
+  return renderTalkRow(el, style, columns, { direction: 'to', hint: send, line, whole, color, running: row.isRunning, failed }, toggle)
 }
 
 export const renderTurnDuration = ({ Text }: ElementTable, style: Style, word: string, durationMs: number, time?: string): RenderElement => {

@@ -302,8 +302,14 @@
     "agentColor": {
       "type": "string",
       "title": "Subagent color",
-      "description": "Color for the subagent rows (Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice), on the parts agentTint names; a failed or stopped one keeps its failure color on the glyph (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
+      "description": "Color for the subagent rows (Agent and Task calls, messages to and from this session's subagents, a subagent's finished notice), on the parts agentTint names; a failed or stopped one keeps its failure color on the glyph (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
       "default": "blue"
+    },
+    "sessionColor": {
+      "type": "string",
+      "title": "Session color",
+      "description": "Color for the rows of messages to and from other Claude sessions (from session: …, to session: …), on the parts sessionTint names; a failed send keeps its failure color on the glyph (fork). Hex, rgb(), ansi256() or a name. Empty uses the accent color.",
+      "default": "magenta"
     },
     "heading1Color": {
       "type": "string",
@@ -540,27 +546,72 @@
     "agentAlign": {
       "type": "string",
       "title": "Subagent side",
-      "description": "With toolStyle chat, where the subagent rows sit (fork): Agent, Task and SendMessage calls and a quiet failure under them, a message from another agent or session (› Message from …), and a subagent's finished notice. left: with Claude's replies, the row's glyph in the reply gutter, a call's name and a message's sender in bold. right: with the other tool rows. agentTint sets what is colored either way.",
+      "description": "With toolStyle chat, where the subagent rows sit (fork): Agent and Task calls and a quiet failure under them, messages to and from this session's subagents (to subagent: …, from subagent: …), and a subagent's finished notice. left: with Claude's replies, the row's glyph in the reply gutter, a call's name in bold. right: with the other tool rows. A message row's type is bold on either side. agentTint sets what is colored either way; messages to and from other sessions follow sessionAlign.",
       "default": "right",
       "options": ["left", "right"]
     },
     "agentIcon": {
       "type": "string",
       "title": "Subagent icon",
-      "description": "The glyph of the subagent rows (Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice), in place of toolIcon, drawn in agentColor unless agentTint is none or the call or the subagent failed or was stopped (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "description": "The glyph of the subagent rows (Agent and Task calls, a message to one of this session's subagents, a subagent's finished notice), in place of toolIcon; a subagent's reply takes agentReplyIcon, and other sessions sessionIcon and sessionReplyIcon. It is drawn in agentColor unless agentTint is none or the call or the subagent failed or was stopped (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
       "default": "»"
     },
     "agentTint": {
       "type": "string",
       "title": "Subagent coloring",
-      "description": "How much of a subagent row draws in agentColor (fork): Agent, Task and SendMessage calls, a message from another agent or session, a subagent's finished notice. row: the glyph and the whole text, not dimmed. icon: the glyph alone, the text drawn like the other rows on its side (dimmed on the right). none: neither, the glyph in the usual tool row colors. A failed or stopped call or subagent keeps its failure color on the glyph.",
+      "description": "How much of a subagent row draws in agentColor (fork): Agent and Task calls, messages to and from this session's subagents, a subagent's finished notice. row: the glyph and the whole text, not dimmed. icon: the glyph alone, the text drawn like the other rows on its side (dimmed on the right). none: neither, the glyph in the usual tool row colors. A failed or stopped call or subagent keeps its failure color on the glyph.",
       "default": "row",
       "options": ["row", "icon", "none"]
+    },
+    "agentReplyIcon": {
+      "type": "string",
+      "title": "Subagent reply icon",
+      "description": "The glyph of a message from one of this session's subagents (from subagent: …), in place of agentIcon, which marks the calls and messages going to a subagent (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "«"
+    },
+    "sessionAlign": {
+      "type": "string",
+      "title": "Session side",
+      "description": "With toolStyle chat, where the rows of messages to and from other Claude sessions sit (fork). left: with Claude's replies, the glyph in the reply gutter. right: with the other tool rows. sessionTint sets what is colored either way.",
+      "default": "right",
+      "options": ["left", "right"]
+    },
+    "sessionIcon": {
+      "type": "string",
+      "title": "Session icon",
+      "description": "The glyph of a message sent to another Claude session (to session: …) (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "⇢"
+    },
+    "sessionReplyIcon": {
+      "type": "string",
+      "title": "Session reply icon",
+      "description": "The glyph of a message from another Claude session (from session: …) (fork). One terminal cell wide, e.g. a Nerd Font icon. Anything else (empty, several glyphs, a wide emoji) stops prismantis loading, with this option named.",
+      "default": "⇠"
+    },
+    "sessionTint": {
+      "type": "string",
+      "title": "Session coloring",
+      "description": "How much of a session message row draws in sessionColor (fork). row: the glyph and the whole text, not dimmed. icon: the glyph alone, the text drawn like the other rows on its side (dimmed on the right). none: neither, the glyph in the usual tool row colors.",
+      "default": "row",
+      "options": ["row", "icon", "none"]
+    },
+    "talkPreview": {
+      "type": "boolean",
+      "title": "Message preview",
+      "description": "With toolStyle chat, whether a row of a message to or from a subagent or another session shows a preview after the name: a sent message's summary, or its first line when it has none, and a received message's first line (to session: name · summary, from session: name · first line) (fork). Off, the row ends at the name; click the row to read the whole message either way.",
+      "default": true
+    },
+    "talkMessageColor": {
+      "type": "string",
+      "title": "Message text color",
+      "description": "The color of a message's own text on a subagent or session message row, its preview and the whole message a click opens under it (fork). row: the row's color (agentColor or sessionColor, as agentTint and sessionTint draw it). plain: the codeText color (codeTextColor), the head and the name keeping the row's color.",
+      "default": "row",
+      "options": ["row", "plain"]
     },
     "toolResults": {
       "type": "string",
       "title": "Tool results",
-      "description": "With toolStyle chat, the result lines Claude Code draws under a tool row (a loaded skill, the answers to a question), not shell output or edit diffs (fork). folded: hidden until the row is clicked or the transcript is expanded (ctrl+o). shown: always drawn. A background launch's type and description are part of its row, not a result, so they never fold. The lines prismantis draws itself (a question's answers, a quiet failure) sit under the row on its side, following askAlign and agentAlign; the rest stay where Claude Code draws them, as it refuses a sized box above its own drawing. A failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest; an interrupted call's result drawn before its row shows, as its interruption is not known yet.",
+      "description": "With toolStyle chat, the result lines Claude Code draws under a tool row (a loaded skill, the answers to a question), not shell output or edit diffs (fork). folded: hidden until the row is clicked or the transcript is expanded (ctrl+o). shown: always drawn. A background launch's type and description are part of its row, not a result, so they never fold. The lines prismantis draws itself (a question's answers, a quiet failure) sit under the row on its side, following askAlign, agentAlign and sessionAlign; the rest stay where Claude Code draws them, as it refuses a sized box above its own drawing. A failed call's result is always shown, except a question you declined or a call you interrupted, which fold like the rest; an interrupted call's result drawn before its row shows, as its interruption is not known yet.",
       "default": "shown",
       "options": ["folded", "shown"]
     },
