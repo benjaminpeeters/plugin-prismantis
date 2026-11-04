@@ -2558,7 +2558,7 @@ export const renderBashEdits = (el: ElementTable, drawn: Style, edits: BashEdits
     : wholeFileCard(el, style, file, fold, `${id}:${i}`, String(i), budget, columns))
   const more = edits.more ? [<el.Text key="more" dimColor>{`… +${edits.more} more ${edits.more === 1 ? 'file' : 'files'}`}</el.Text>] : []
   const said = notes.map((note, i) => <el.Text key={`note${i}`} dimColor>{`(${note})`}</el.Text>)
-  return diffRow(el, style, [...cards, ...more, ...said], below)
+  return diffRow(el, style, [...cards.filter((card): card is RenderElement => card !== null), ...more, ...said], below)
 }
 
 const TREE_MOVERS = new Set(['checkout', 'switch', 'stash', 'pull', 'merge', 'rebase', 'reset', 'restore', 'clean', 'cherry-pick', 'revert'])
@@ -2720,18 +2720,25 @@ export const continuesLaunch = (messages: readonly RunMessage[], id: string): bo
   return before?.role === 'assistant' && launchCall(before.toolUses.at(-1))
 }
 
-const AGENT_COLORS: Record<string, string> = {
+const AGENT_COLORS = {
   red: '#dc2626', blue: '#6a9bcc', green: '#16a34a', yellow: '#ca8a04', purple: '#827dbd', orange: '#d97757', pink: '#c46686', cyan: '#0891b2',
-}
+} as const
+
+export type AgentColorName = keyof typeof AGENT_COLORS
+
+const isAgentColor = (name: string): name is AgentColorName => Object.hasOwn(AGENT_COLORS, name)
 
 const BADGE_TEXT = '#000000'
 
 export type AgentColors = ReadonlyMap<string, string>
 
+export const agentColor = (name: AgentColorName): string => AGENT_COLORS[name]
+
 export const agentDefinition = (text: string, file: string): { name: string; color?: string } => {
   const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
   const value = (key: string) => new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+?)["']?\\s*$`, 'm').exec(head)?.[1]
-  const color = AGENT_COLORS[value('color')?.toLowerCase() ?? '']
+  const named = value('color')?.toLowerCase()
+  const color = named !== undefined && isAgentColor(named) ? AGENT_COLORS[named] : undefined
   return { name: value('name') ?? file.replace(/\.md$/, ''), ...(color ? { color } : {}) }
 }
 

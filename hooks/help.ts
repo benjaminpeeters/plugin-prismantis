@@ -29,7 +29,7 @@ Code-shaped prose stays as written: f(*args, **kwargs), a link with parentheses 
 | \`/prismantis\` | This screen |
 | \`/prismantis theme <name>\` | Switch theme on the spot (\`/prismantis <name>\` works too), \`random\` for a new dark one now and each time the mod loads |
 | \`/prismantis copy\` | Copy the last reply, or \`copy code\` for its last code block |
-| \`/prismantis setup\` | Pick a theme and how tables, tasks, headings, copy buttons, prompts, times, tool rows, tool output, diffs and pie charts look, from drawn samples |
+| \`/prismantis setup\` | Pick a theme and how tables, tasks, headings, copy buttons, prompts, times, tool rows, tool output, diffs, subagent and session rows, message text and pie charts look, from drawn samples |
 | \`/config\` | Edit any option |
 
 > [!NOTE]
@@ -89,6 +89,8 @@ Scroll up: what you typed draws in a bubble. \`promptStyle\` switches to \`wide\
 ### Tool rows
 
 Tool calls draw as one line, dimmed on the right by default, and the file each one read or edited opens on click in a terminal that draws hyperlinks. Set \`toolStyle\` in \`/config\` to \`chat\`, \`tree-dim\`, \`tree-bold\` or \`classic\`. \`toolOutput: quiet\` in \`/config\` hides what Claude only read and says in plain words what each call did: \`Read src/app.ts lines 1–40\`, \`Searched src/ for "TODO"\`.
+
+With \`toolStyle: chat\`, messages between Claude and its subagents draw as \`to subagent: <type>\` and \`from subagent: <type>\` rows in \`agentColor\`, the type as a badge in the color its agent definition sets, and messages to and from another Claude session as \`to session: <name>\` and \`from session: <name>\` rows in \`sessionColor\`. Click a row to read the whole message under it; \`agentTint\` and \`sessionTint\` set how much of a row is colored, \`talkMessageColor\` the message's own text, \`talkPreview\` whether its first line shows after the name.
 
 Each edit draws as a diff card headed \`+N −M\`: code highlighted in the file's language, added and removed lines on a tint of the theme's own green and red with the changed words in a deeper tint, kept readable in every theme, long lines wrapped, the first 20 lines and a \`+K more lines\` button that opens the rest, as does a click anywhere on the card. Files a shell command changes (\`sed -i\`, a script) get the same card, one per file, headed by its path. Set \`diffStyle\` in \`/config\` for the look: \`card\`, \`full\`, \`marks\` or \`bar\`.
 
@@ -296,7 +298,7 @@ export const helpText = (themes: readonly string[]): string => `
 |---------|------|
 | \`/prismantis theme <name>\` | Switch theme on the spot (\`/prismantis <name>\` works too), \`random\` for a new dark one now and each time the mod loads |
 | \`/prismantis copy\` | Copy the last reply, or \`copy code\` for its last code block |
-| \`/prismantis setup\` | Pick a theme and how tables, tasks, headings, copy buttons, prompts, times, tool rows, tool output, diffs and pie charts look, from drawn samples |
+| \`/prismantis setup\` | Pick a theme and how tables, tasks, headings, copy buttons, prompts, times, tool rows, tool output, diffs, subagent and session rows, message text and pie charts look, from drawn samples |
 | \`/prismantis demo\` | Full showcase, every element and diagram, plus a section in your language (Korean so far, or \`demo ko\`) |
 | \`/prismantis demo-rtl\` | Hebrew right-to-left showcase |
 | \`/prismantis diffs\` | Ten diff card looks one under the other, each with the options that give it |
@@ -409,7 +411,7 @@ flowchart LR
 
 export const languageShowcase = (lang: string): string => (/^ko/i.test(lang) ? KOREAN_SHOWCASE : '')
 
-export type SetupStep = { name: string; key: 'theme' | 'tableStyle' | 'taskStyle' | 'headingStyle' | 'copyButtonStyle' | 'promptStyle' | 'clock' | 'toolStyle' | 'toolOutput' | 'diffStyle' | 'pieStyle'; title: string; note: string; options: readonly string[]; sample: string }
+export type SetupStep = { name: string; key: 'theme' | 'tableStyle' | 'taskStyle' | 'headingStyle' | 'copyButtonStyle' | 'promptStyle' | 'clock' | 'toolStyle' | 'toolOutput' | 'diffStyle' | 'agentTint' | 'sessionTint' | 'talkMessageColor' | 'pieStyle'; title: string; note: string; options: readonly string[]; sample: string }
 
 export const setupSteps = (themes: readonly string[]): SetupStep[] => [
   { name: 'theme', key: 'theme', title: 'Theme', note: 'Each theme draws the same line. `random` picks a new dark one each time the mod loads.', options: themes, sample: '**Bold**, `inline code`, 250ms and ~/src/app.ts.' },
@@ -422,6 +424,9 @@ export const setupSteps = (themes: readonly string[]): SetupStep[] => [
   { name: 'tools', key: 'toolStyle', title: 'Tool rows', note: 'How tool rows sit next to Claude\'s sentences. Sharing sessions as screenshots? `chat` and `tree-dim` draw tool rows in dim gray, the first thing to blur when an image gets resized, so pick `tree-bold` or `classic`.', options: ['chat', 'tree-dim', 'tree-bold', 'classic'], sample: '' },
   { name: 'output', key: 'toolOutput', title: 'Tool output', note: 'How much of a tool call shows. `full` keeps Claude Code\'s own results under each row. `quiet` names a shell call by what it does and shows a failure\'s last real line instead of its whole output; it also shows reads, searches and listings as their row only and drops approval lines. Edits keep their diff either way. Needs `toolRows` on.', options: ['full', 'quiet'], sample: '' },
   { name: 'diffs', key: 'diffStyle', title: 'Diffs', note: 'How an edit or a new file draws under its row. `card` frames the lines in a rounded box, `full` drops the box and tints each changed line across the width, `marks` drops the tint and colors only the `+` and `−` marks, `bar` puts a colored `▌` before each changed line. Every look highlights the code and the words that changed. Needs `toolRows` on.', options: ['card', 'full', 'marks', 'bar'], sample: '' },
+  { name: 'agents', key: 'agentTint', title: 'Subagent rows', note: 'How much of a subagent row draws in `agentColor`: an Agent call, a message to or from one of this session\'s subagents (`to subagent:`, `from subagent:`), its finished notice. `row` colors the glyph and the text, `icon` the glyph alone, `none` neither. Needs `toolStyle` chat.', options: ['row', 'icon', 'none'], sample: '' },
+  { name: 'sessions', key: 'sessionTint', title: 'Session rows', note: 'How much of a row of a message to or from another Claude session (`to session:`, `from session:`) draws in `sessionColor`. `row` colors the glyph and the text, `icon` the glyph alone, `none` neither. Needs `toolStyle` chat.', options: ['row', 'icon', 'none'], sample: '' },
+  { name: 'messages', key: 'talkMessageColor', title: 'Message text', note: 'The color of a message\'s own text on those rows, and of the whole message a click opens under them. `row` draws it in the row\'s color, `plain` in the code text color, the head and the name keeping the row\'s color. Needs `toolStyle` chat.', options: ['row', 'plain'], sample: '' },
   { name: 'pies', key: 'pieStyle', title: 'Pie charts', note: 'How mermaid `pie` charts draw. `round` falls back to bars in ascii mode, with more slices than the theme has distinct colors (mono always) or in a narrow terminal.', options: ['round', 'bars'], sample: '```mermaid\npie title Time per reply stage\n    "Draw" : 9\n    "Paint" : 5\n    "Parse" : 3\n```' },
 ]
 

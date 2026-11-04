@@ -242,6 +242,19 @@ Collapsed groups draw one line too: `Ran 3 commands, read 2 files · last: npm t
 
 With `chat`, a background task's notification draws as a tool row too: a background shell's (`Background command "…" completed`) on the right, its glyph colored by how the task ended; a subagent's (`Agent "…" finished · 2m 9s`) as a subagent row, following `agentAlign`, `agentIcon` and `agentTint`, only a failed or stopped one overriding the glyph color (fork). While a call runs, Claude Code's `(ctrl+b to run in background)` line sits on the right under a row on the right; under a row on the left (`agentAlign` left) it stays where Claude Code draws it (fork). A subagent launched in the background reads `background agents launched (↓ to manage)`, launches that follow one another with no text between sharing that one header (it has no count, as it draws before the next launch exists), with `<type> (<description>)` under it, in the plain text color with `agentTint` row and dimmed like the row otherwise (led by `└` with `agentAlign` left), the type drawn as a badge in the `color` its agent definition sets, the first line drawn with `agentIcon` and `agentTint` on the `agentAlign` side; `↓` is Claude Code's default key, as a mod cannot read your binding. Several launched in one message keep Claude Code's own grouped block, which a mod cannot redraw (fork). A message row to or from a subagent or another session opens the whole message under it when clicked, on the edit card's background (a sent message's folded result opens with it), and closes it on a second click; while the mouse is over the row its colors soften toward the background, keeping their hue (a color given by name, such as `blue`, falls back to the terminal's dim color, so give `agentColor` and `sessionColor` as hex for a true soft dim), and a row drawn dimmed (`agentTint` or `sessionTint` `icon` or `none`, on the right) loses its dim instead, as edit rows do (fork).
 
+`agentTint` and `sessionTint` set how much of a message row is colored (fork):
+
+| | `row` (default) | `icon` | `none` |
+|---|---|---|---|
+| subagent | ![agentTint row](docs/talk/agent-row.png) | ![agentTint icon](docs/talk/agent-icon.png) | ![agentTint none](docs/talk/agent-none.png) |
+| session | ![sessionTint row](docs/talk/session-row.png) | ![sessionTint icon](docs/talk/session-icon.png) | ![sessionTint none](docs/talk/session-none.png) |
+
+`talkMessageColor` sets the color of the message's own text (fork):
+
+| `row` (default) | `plain` |
+|---|---|
+| ![talkMessageColor row](docs/talk/message-row.png) | ![talkMessageColor plain](docs/talk/message-plain.png) |
+
 `toolOutput: quiet` shows what Claude did, not what it read: reads, searches and read-only shell commands draw one plain row like `Read src/report.py lines 1–10` and nothing under it. Edits keep their diff and failures show their real error; the full rules are in [docs/tool-output.md](docs/tool-output.md).
 
 ![quiet: rows say what was read, nothing drawn under reads](docs/tools/quiet.png)

@@ -20,7 +20,7 @@ import { renderLine } from './render-log'
 import { drawDiagrams } from './mermaid'
 import type { CopyButton, DrawFold, DrawPaste, Fold, FoldLook, TerminalEnv } from './render'
 import type { AgentColors, AsideMessage, RowHint, RowToggle, TalkHint, TalkKind, ToolRow } from './render'
-import { MARK, MESSAGE_LOOK, agentDefinition, delegatedType, sentMessage, unknownAgent, callEnding, continuesLaunch, launchedInBackground, columnsOf, hintAside, isAsk, messageAside, peerSender, record, rememberBounded, withStepRule, renderAnswers, renderHintAside, asideResult, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
+import { MARK, MESSAGE_LOOK, agentColor, agentDefinition, delegatedType, sentMessage, unknownAgent, callEnding, continuesLaunch, launchedInBackground, columnsOf, hintAside, isAsk, messageAside, peerSender, record, rememberBounded, withStepRule, renderAnswers, renderHintAside, asideResult, resultAside, bashEdits, fileStats, glyphButton, foldLook, foldPlainPrompt, foldReply, foldOpen, iconButton, drawMath, drawsHyperlinks, editNotes, fileRoot, hasShellOutput, instanceKey, isReadOnlyCall, leftToEngine, markerRoom, mirrored, noteTip, pasteLang, pathsToProbe, remember, rememberCall, renderBashEdits, renderBlocks, renderDiffCard, renderExpandedShell, renderFailure, renderShellResult, renderToolGroup, renderToolRow, renderTurnDuration, renderUserPrompt, takesClickableMarks, takesEditorLinks, takesHttpLinks, withoutBashEdits } from './render'
 import type { SetupStep } from './help'
 import { HINT, ISSUE_HINT, SETUP_DONE, SETUP_PANE_KEYS, SETUP_PANE_OPENED, THEME_PREVIEW, findSetup, helpText, languageShowcase, rtlShowcaseText, setupParts, setupSteps, setupText, showcaseText } from './help'
 import { PRESET_NAMES } from './presets'
@@ -623,6 +623,22 @@ const diffSample = (el: ReturnType<EngineInterface['ui']['resolve']>, style: Sty
   <el.Box key={`${id}d`} flexDirection="column">{renderDiffCard(el, style, SETUP_EDIT, () => null, id, columns)}</el.Box>,
 ]
 
+const SETUP_AGENT: TalkHint = { kind: 'agent', type: 'code-reviewer', badgeColor: agentColor('green') }
+
+const SETUP_SESSION: TalkHint = { kind: 'session', name: 'api-server' }
+
+const talkSample = (el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, hints: readonly TalkHint[], id: string, columns: number): RenderElement[] => {
+  const chat: Style = { ...style, toolStyle: 'chat' }
+  return hints.flatMap((hint, i) => {
+    const sent = { tool: 'SendMessage', input: { to: hint.kind === 'session' ? hint.name : 'reviewer', summary: 'Review the parser', message: 'Review the parser.' }, output: { success: true }, isRunning: false, isErrored: false, isInterrupted: false, hint: { kind: 'send' as const, send: hint } }
+    const reply = { text: 'The parser looks right.', origin: { kind: 'peer' as const }, from: { name: 'reviewer' }, isExpanded: false }
+    return [
+      <el.Box key={`${id}t${i}`}>{renderToolRow(el, chat, sent, columns)}</el.Box>,
+      <el.Box key={`${id}f${i}`}>{messageAside(el, chat, reply, columns, hint, new Map())}</el.Box>,
+    ]
+  })
+}
+
 type SetupView = { el: ReturnType<EngineInterface['ui']['resolve']>; base: Style; options: PluginOptions; at: number; step: SetupStep; current: string; columns: number; rows: number; pick: (value: string) => void }
 
 const setupKeyboardPane = ($: EngineInterface, v: SetupView, focused: string, randomTheme: string): RenderElement => {
@@ -659,6 +675,9 @@ const drawSetup = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['res
     if (key === 'diffStyle') return diffSample(el, style, id, columns)
     if (key === 'copyButtonStyle') return copySample(el, style, value, id, columns)
     if (key === 'clock') return clockSample(el, style, value, id, columns)
+    if (key === 'agentTint') return talkSample(el, style, [SETUP_AGENT], id, columns)
+    if (key === 'sessionTint') return talkSample(el, style, [SETUP_SESSION], id, columns)
+    if (key === 'talkMessageColor') return talkSample(el, style, [SETUP_AGENT, SETUP_SESSION], id, columns)
     return []
   }
   const picks = found.parts.options.map(({ value, text }, i) => {
